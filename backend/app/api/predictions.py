@@ -77,7 +77,10 @@ def recompute_prediction(
         try:
             cutoff = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
         except Exception:
-            pass
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid 'as_of' timestamp format '{as_of}'. Provide a valid ISO-8601 string (e.g., '2026-06-01T10:00:00Z')."
+            )
 
     pred = prediction_engine.evaluate_risk(db, patient_id, prediction_timestamp=cutoff)
 

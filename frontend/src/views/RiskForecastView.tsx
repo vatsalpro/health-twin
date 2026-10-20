@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Layers,
   CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 
 export const RiskForecastView: React.FC = () => {
@@ -296,81 +297,93 @@ export const RiskForecastView: React.FC = () => {
                 Model Registry & Evaluation Provenance ({evaluationMetrics?.model_version || 'v1.4.2'})
               </h3>
               <p className="text-xs text-[#A5B3C8] mt-0.5">
-                Evaluated on longitudinal maternal cohorts using patient-level 5-fold cross-validation.
+                Research preeclampsia risk engine parameterized from clinical obstetric risk factors.
               </p>
             </div>
-            <span className="px-3 py-1 rounded-full text-xs font-mono bg-[#5BE7E8]/10 text-[#5BE7E8] border border-[#5BE7E8]/30">
+            <span className="px-3 py-1 rounded-full text-xs font-mono bg-[#E9B96E]/10 text-[#E9B96E] border border-[#E9B96E]/30">
               Horizon: 14 Days
             </span>
           </div>
 
-          {/* Metric Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
-              <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">AUROC</span>
-              <p className="text-2xl font-bold font-mono text-[#5BE7E8] mt-1">
-                {evaluationMetrics?.metrics?.auroc || '0.884'}
-              </p>
-              <span className="text-[10px] text-[#43D6B0]">Discrimination</span>
-            </div>
+          {!evaluationMetrics?.metrics_available ? (
+            /* Honest Not-Evaluated State Banner */
+            <div className="p-6 bg-[#0B1220] rounded-2xl border border-[rgba(166,190,220,0.15)] space-y-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-[#E9B96E] shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-[#F4F7FC]">
+                    Model Performance Validation Pending External Clinical Cohort
+                  </h4>
+                  <p className="text-xs text-[#A5B3C8] leading-relaxed">
+                    {evaluationMetrics?.message ||
+                      'Model performance has not yet been evaluated on an external longitudinal clinical validation cohort.'}
+                  </p>
+                </div>
+              </div>
 
-            <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
-              <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">AUPRC</span>
-              <p className="text-2xl font-bold font-mono text-[#5BE7E8] mt-1">
-                {evaluationMetrics?.metrics?.auprc || '0.742'}
-              </p>
-              <span className="text-[10px] text-[#43D6B0]">Precision-Recall</span>
+              {evaluationMetrics?.validation_requirements && (
+                <div className="mt-4 pt-4 border-t border-[rgba(166,190,220,0.1)] grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="p-3 bg-[#101A2B] rounded-xl border border-[rgba(166,190,220,0.08)]">
+                    <span className="text-[10px] font-mono uppercase text-[#5BE7E8] block">Cohort Criteria</span>
+                    <span className="text-xs text-[#F4F7FC] mt-1 block">
+                      {evaluationMetrics.validation_requirements.cohort_criteria}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-[#101A2B] rounded-xl border border-[rgba(166,190,220,0.08)]">
+                    <span className="text-[10px] font-mono uppercase text-[#5BE7E8] block">Sample Threshold</span>
+                    <span className="text-xs text-[#F4F7FC] mt-1 block">
+                      {evaluationMetrics.validation_requirements.minimum_sample_size}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-[#101A2B] rounded-xl border border-[rgba(166,190,220,0.08)]">
+                    <span className="text-[10px] font-mono uppercase text-[#5BE7E8] block">Validation Protocol</span>
+                    <span className="text-xs text-[#F4F7FC] mt-1 block">
+                      {evaluationMetrics.validation_requirements.protocol}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
+          ) : (
+            /* Metric Cards when real evaluation is available */
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
+                <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">AUROC</span>
+                <p className="text-2xl font-bold font-mono text-[#5BE7E8] mt-1">
+                  {evaluationMetrics.metrics?.auroc?.toFixed(3)}
+                </p>
+                <span className="text-[10px] text-[#43D6B0]">Discrimination</span>
+              </div>
 
-            <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
-              <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">Sensitivity</span>
-              <p className="text-2xl font-bold font-mono text-[#F4F7FC] mt-1">
-                {evaluationMetrics?.metrics?.sensitivity_at_operating_point
-                  ? `${(evaluationMetrics.metrics.sensitivity_at_operating_point * 100).toFixed(1)}%`
-                  : '83.5%'}
-              </p>
-              <span className="text-[10px] text-[#A5B3C8]">At operating threshold</span>
-            </div>
+              <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
+                <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">AUPRC</span>
+                <p className="text-2xl font-bold font-mono text-[#5BE7E8] mt-1">
+                  {evaluationMetrics.metrics?.auprc?.toFixed(3)}
+                </p>
+                <span className="text-[10px] text-[#43D6B0]">Precision-Recall</span>
+              </div>
 
-            <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
-              <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">Specificity</span>
-              <p className="text-2xl font-bold font-mono text-[#F4F7FC] mt-1">
-                {evaluationMetrics?.metrics?.specificity_at_operating_point
-                  ? `${(evaluationMetrics.metrics.specificity_at_operating_point * 100).toFixed(1)}%`
-                  : '88.7%'}
-              </p>
-              <span className="text-[10px] text-[#A5B3C8]">At operating threshold</span>
-            </div>
-          </div>
+              <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
+                <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">Sensitivity</span>
+                <p className="text-2xl font-bold font-mono text-[#F4F7FC] mt-1">
+                  {evaluationMetrics.metrics?.sensitivity_at_operating_point
+                    ? `${(evaluationMetrics.metrics.sensitivity_at_operating_point * 100).toFixed(1)}%`
+                    : 'N/A'}
+                </p>
+                <span className="text-[10px] text-[#A5B3C8]">At operating threshold</span>
+              </div>
 
-          {/* Subgroup Analysis Table */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-[#5BE7E8]">
-              Subgroup Performance Breakdown
-            </h4>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[rgba(166,190,220,0.1)] text-[10px] font-mono uppercase text-[#A5B3C8]">
-                    <th className="pb-2">Cohort</th>
-                    <th className="pb-2">Total Patients</th>
-                    <th className="pb-2">Preeclampsia Events</th>
-                    <th className="pb-2 text-right">Subgroup AUROC</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[rgba(166,190,220,0.08)]">
-                  {evaluationMetrics?.subgroups?.map((sub: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-[#101A2B]/40">
-                      <td className="py-2.5 font-medium text-[#F4F7FC]">{sub.cohort}</td>
-                      <td className="py-2.5 font-mono text-[#A5B3C8]">{sub.n_patients}</td>
-                      <td className="py-2.5 font-mono text-[#F43F5E]">{sub.events}</td>
-                      <td className="py-2.5 text-right font-mono font-bold text-[#5BE7E8]">{sub.auroc}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
+                <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">Specificity</span>
+                <p className="text-2xl font-bold font-mono text-[#F4F7FC] mt-1">
+                  {evaluationMetrics.metrics?.specificity_at_operating_point
+                    ? `${(evaluationMetrics.metrics.specificity_at_operating_point * 100).toFixed(1)}%`
+                    : 'N/A'}
+                </p>
+                <span className="text-[10px] text-[#A5B3C8]">At operating threshold</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Provenance Statement */}
           <div className="p-4 bg-[#0B1220]/80 rounded-xl border border-[rgba(166,190,220,0.12)] text-xs space-y-1">

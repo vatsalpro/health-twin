@@ -193,7 +193,7 @@ python test_api.py
 - Digital Twin state synchronization: **PASSED** (SBP=142, DBP=92, MAP=108.7, GA=31.4w)
 - 14-Day Preeclampsia Risk Engine: **PASSED** (Score=0.594, Category=HIGH)
 - Non-Causal Simulation: **PASSED** (Simulated=0.967, Delta=+0.373)
-- Research Model Cohort Metrics: **PASSED** (AUROC=0.884, AUPRC=0.742, N=4120)
+- Research Model Cohort Evaluation: **PASSED** (Status: `not_evaluated`, Truthful Provenance Guard)
 - Clara Novak Guard Check: **PASSED** (`INSUFFICIENT_DATA` triggered)
 
 ### 4. Frontend Production Build
@@ -221,5 +221,5 @@ The application includes a provider abstraction:
 
 - **Outcome Definition:** Clinician-confirmed preeclampsia within 14 days per ACOG/ISSHP criteria (new-onset hypertension $\ge 140/90$ after 20 weeks with proteinuria $\ge 1+$ / UPCR $\ge 0.30$ or end-organ dysfunction).
 - **Leakage Elimination:** Features are strictly indexed at or before $t_{\text{prediction}}$. Any measurement with timestamp $> t_{\text{prediction}}$ is discarded.
-- **Evaluation Cohort:** 4,120 longitudinal pregnancy records, 386 verified preeclampsia events, evaluated via patient-level 5-fold cross-validation.
-- **Metrics:** AUROC = 0.884, AUPRC = 0.742, Sensitivity = 83.5%, Specificity = 88.7%, Brier Score = 0.081.
+- **Evaluation Status:** Research prototype. Performance on external longitudinal clinical cohorts is `not_evaluated`.
+- **Validation Criteria:** External multi-site longitudinal singleton pregnancy cohorts with verified ACOG/ISSHP outcomes and strict patient-level temporal cross-validation. Autonomous clinical deployment requires empirical validation against certified EHR datasets.

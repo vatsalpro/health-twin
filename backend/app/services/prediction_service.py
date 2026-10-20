@@ -86,6 +86,27 @@ class PreeclampsiaPredictionEngine:
         ga_weeks = cls._resolve_gestational_age(db, patient_id, prediction_timestamp, observations)
 
         # Check gestational age eligibility
+        if ga_weeks is None:
+            pred = RiskPrediction(
+                patient_id=patient_id,
+                episode_id=episode_id,
+                model_version=cls.MODEL_VERSION,
+                prediction_timestamp=prediction_timestamp,
+                gestational_age_weeks=None,
+                prediction_horizon_days=cls.DEFAULT_HORIZON_DAYS,
+                risk_score=None,
+                risk_category="INSUFFICIENT_DATA",
+                is_insufficient_data=True,
+                insufficient_data_reason="Gestational age is unknown. Verified conception date or clinical gestational age observation required.",
+                model_limitations="Model requires gestational age >= 20.0 weeks and baseline hemodynamic recordings.",
+                feature_contributions_json=json.dumps([]),
+                feature_values_json=json.dumps({"gestational_age_weeks": None})
+            )
+            db.add(pred)
+            db.commit()
+            db.refresh(pred)
+            return pred
+
         if ga_weeks < cls.MIN_ELIGIBLE_GA:
             pred = RiskPrediction(
                 patient_id=patient_id,
@@ -300,7 +321,7 @@ class PreeclampsiaPredictionEngine:
         return z, contributions
 
     @classmethod
-    def _resolve_gestational_age(cls, db: Session, patient_id: str, cutoff: datetime, observations: List[ClinicalObservation]) -> float:
+    def _resolve_gestational_age(cls, db: Session, patient_id: str, cutoff: datetime, observations: List[ClinicalObservation]) -> Optional[float]:
         # Check episode
         episode = db.query(PregnancyEpisode).filter(PregnancyEpisode.patient_id == patient_id, PregnancyEpisode.is_active == True).first()
         if episode and episode.conception_date:
@@ -311,11 +332,13 @@ class PreeclampsiaPredictionEngine:
                     return round(diff_days / 7.0, 1)
             except Exception:
                 pass
+        if episode and episode.current_gestational_age_weeks:
+            return episode.current_gestational_age_weeks
         # Fallback to latest observation gestational age
         for obs in observations:
             if obs.gestational_age_weeks:
                 return obs.gestational_age_weeks
-        return 28.0
+        return None
 
     @classmethod
     def _extract_vitals_at_cutoff(cls, observations: List[ClinicalObservation]) -> Dict[str, Any]:
@@ -412,34 +435,26 @@ class PreeclampsiaPredictionEngine:
     @classmethod
     def get_evaluation_metrics(cls) -> Dict[str, Any]:
         """
-        Returns rigorous, patient-level evaluation metrics across longitudinal test cohort.
+        Truthful evaluation state reflecting the research status of the prototype model.
+        Fabricated or synthetic evaluation metrics are strictly prohibited.
         """
         return {
             "model_version": cls.MODEL_VERSION,
             "prediction_horizon_days": cls.DEFAULT_HORIZON_DAYS,
             "eligible_gestational_age": "20.0 to 40.0 weeks",
-            "evaluation_cohort": {
-                "total_patients": 4120,
-                "preeclampsia_events": 386,
-                "evaluation_method": "Patient-level 5-fold cross-validation with strict temporal indexing (no patient leakage across splits)"
+            "evaluation_status": "not_evaluated",
+            "metrics_available": False,
+            "message": "Model performance has not yet been evaluated on an external longitudinal clinical validation cohort.",
+            "validation_requirements": {
+                "cohort_criteria": "Longitudinal singleton pregnancies with confirmed ACOG/ISSHP clinical outcomes",
+                "minimum_sample_size": ">= 1,000 diverse subjects with temporal observation tracking",
+                "protocol": "Patient-level cross-validation without temporal leakage across train/validation splits"
             },
-            "metrics": {
-                "auroc": 0.884,
-                "auprc": 0.742,
-                "sensitivity_at_operating_point": 0.835,
-                "specificity_at_operating_point": 0.887,
-                "brier_score": 0.081,
-                "calibration_slope": 0.982,
-                "calibration_intercept": -0.014
-            },
-            "subgroups": [
-                {"cohort": "Nulliparous", "n_patients": 2240, "auroc": 0.891, "events": 242},
-                {"cohort": "Multiparous with prior preeclampsia", "n_patients": 410, "auroc": 0.865, "events": 88},
-                {"cohort": "Chronic Hypertension", "n_patients": 320, "auroc": 0.852, "events": 56}
-            ],
+            "metrics": None,
             "provenance_statement": (
-                "Trained and evaluated using maternal longitudinal cohorts with confirmed ACOG/ISSHP preeclampsia outcomes. "
-                "Features are strictly bounded at the index prediction timestamp to eliminate hindsight bias and temporal leakage."
+                "PregTwin research prototype preeclampsia risk engine. Parameterized using clinical risk coefficients "
+                "from published obstetric literature. Autonomous clinical deployment requires empirical validation against "
+                "multi-site, de-identified longitudinal maternal records."
             )
         }
 

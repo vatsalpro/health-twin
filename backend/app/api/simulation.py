@@ -20,19 +20,43 @@ def simulate_scenario(
     patient: PatientProfile = Depends(verify_patient_access),
     db: Session = Depends(get_db)
 ):
-    # Retrieve baseline prediction if available
+    # Physiological consistency check
+    if req.sbp <= req.dbp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Systolic blood pressure must be greater than diastolic blood pressure."
+        )
+
+    # Retrieve patient's verified baseline prediction
     baseline_pred = None
     if req.baseline_prediction_id:
-        baseline_pred = db.query(RiskPrediction).filter(RiskPrediction.id == req.baseline_prediction_id).first()
-    if not baseline_pred:
+        baseline_pred = (
+            db.query(RiskPrediction)
+            .filter(
+                RiskPrediction.id == req.baseline_prediction_id,
+                RiskPrediction.patient_id == patient_id
+            )
+            .first()
+        )
+        if not baseline_pred:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Baseline risk prediction '{req.baseline_prediction_id}' not found for patient '{patient_id}'."
+            )
+    else:
         baseline_pred = (
             db.query(RiskPrediction)
             .filter(RiskPrediction.patient_id == patient_id, RiskPrediction.is_insufficient_data == False)
             .order_by(desc(RiskPrediction.prediction_timestamp))
             .first()
         )
+        if not baseline_pred or baseline_pred.risk_score is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Patient has no valid baseline risk prediction. Counterfactual simulation requires an existing baseline evaluation."
+            )
 
-    baseline_risk = baseline_pred.risk_score if baseline_pred else 0.12
+    baseline_risk = baseline_pred.risk_score
 
     sim_result = prediction_engine.simulate_scenario(
         patient=patient,

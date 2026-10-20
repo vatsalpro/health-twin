@@ -10,8 +10,8 @@ $node = node --version
 Write-Host "      Found: $py, $node" -ForegroundColor Green
 
 # Launch Backend in new window
-Write-Host "[2/3] Launching FastAPI Backend on http://127.0.0.1:8000..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\backend'; python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
+Write-Host "[2/3] Launching FastAPI Backend on http://127.0.0.1:8008..." -ForegroundColor Yellow
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\backend'; python -m uvicorn app.main:app --host 127.0.0.1 --port 8008 --reload"
 
 # Launch Frontend in new window
 Write-Host "[3/3] Launching Vite React Frontend on http://localhost:5173..." -ForegroundColor Yellow

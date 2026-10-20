@@ -157,7 +157,7 @@ class ClinicalObservation(Base):
     patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="CASCADE"), nullable=False)
     episode_id = Column(String(36), ForeignKey("pregnancy_episodes.id", ondelete="CASCADE"), nullable=True)
     source_document_id = Column(String(36), ForeignKey("medical_documents.id", ondelete="SET NULL"), nullable=True)
-    source_extracted_field_id = Column(String(36), nullable=True)
+    source_extracted_field_id = Column(String(36), nullable=True, index=True)
     
     observation_type = Column(String(50), nullable=False) # blood_pressure, laboratory, urine_protein, wearable
     test_name = Column(String(100), nullable=False) # Systolic BP, Diastolic BP, Platelets, AST, ALT, Proteinuria
@@ -168,7 +168,7 @@ class ClinicalObservation(Base):
     is_abnormal = Column(Boolean, default=False)
     
     measurement_timestamp = Column(DateTime(timezone=True), nullable=False)
-    gestational_age_weeks = Column(Float, nullable=False)
+    gestational_age_weeks = Column(Float, nullable=True) # Nullable: only populated if source evidence or valid dating exists
     source_type = Column(String(50), default="accepted_document") # accepted_document, patient_reported, wearable_stream, synthetic_stream
     review_status = Column(String(50), default="ACCEPTED")
     created_at = Column(DateTime(timezone=True), default=utc_now)
@@ -184,7 +184,7 @@ class MaternalTwinState(Base):
     episode_id = Column(String(36), ForeignKey("pregnancy_episodes.id", ondelete="CASCADE"), nullable=True)
     version = Column(Integer, default=1)
     timestamp = Column(DateTime(timezone=True), default=utc_now)
-    gestational_age_weeks = Column(Float, nullable=False)
+    gestational_age_weeks = Column(Float, nullable=True)
     
     # Physiological twin attributes
     sbp = Column(Float, nullable=True)
@@ -214,7 +214,7 @@ class RiskPrediction(Base):
     episode_id = Column(String(36), ForeignKey("pregnancy_episodes.id", ondelete="CASCADE"), nullable=True)
     model_version = Column(String(100), nullable=False)
     prediction_timestamp = Column(DateTime(timezone=True), nullable=False)
-    gestational_age_weeks = Column(Float, nullable=False)
+    gestational_age_weeks = Column(Float, nullable=True)
     prediction_horizon_days = Column(Integer, default=14)
     
     # Quantified outputs

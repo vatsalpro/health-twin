@@ -93,15 +93,27 @@ class TwinService:
         proteinuria_dipstick = prot_obs.value_text if prot_obs else None
         protein_creatinine_ratio = upcr_obs.value_numeric if upcr_obs else None
 
-        # Determine gestational age at this state
-        ga_weeks = 28.0
-        if episode and episode.current_gestational_age_weeks:
+        # Determine gestational age from verified clinical evidence
+        ga_weeks = None
+        if episode and episode.conception_date:
+            try:
+                c_date = datetime.strptime(episode.conception_date, "%Y-%m-%d").date()
+                ref_date = as_of_timestamp.date() if hasattr(as_of_timestamp, "date") else as_of_timestamp
+                diff_days = (ref_date - c_date).days
+                if diff_days > 0:
+                    ga_weeks = round(diff_days / 7.0, 1)
+            except Exception:
+                pass
+
+        if ga_weeks is None and episode and episode.current_gestational_age_weeks:
             ga_weeks = episode.current_gestational_age_weeks
-        elif sbp_obs and sbp_obs.gestational_age_weeks:
+        elif ga_weeks is None and sbp_obs and sbp_obs.gestational_age_weeks:
             ga_weeks = sbp_obs.gestational_age_weeks
 
         # Missingness checks
         missing_indicators = []
+        if ga_weeks is None:
+            missing_indicators.append("gestational_age")
         if sbp is None or dbp is None:
             missing_indicators.append("blood_pressure")
         if proteinuria_dipstick is None and protein_creatinine_ratio is None:

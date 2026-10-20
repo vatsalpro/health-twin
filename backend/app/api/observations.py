@@ -59,9 +59,26 @@ def create_observation(
         try:
             meas_time = datetime.fromisoformat(req.measurement_timestamp.replace("Z", "+00:00"))
         except Exception:
-            pass
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid measurement_timestamp format '{req.measurement_timestamp}'. Must be valid ISO-8601."
+            )
 
-    ga_weeks = req.gestational_age_weeks or 28.0
+    ga_weeks = req.gestational_age_weeks
+    if ga_weeks is None:
+        from app.models.entities import PregnancyEpisode
+        episode = db.query(PregnancyEpisode).filter(PregnancyEpisode.patient_id == patient_id, PregnancyEpisode.is_active == True).first()
+        if episode and episode.conception_date:
+            try:
+                c_date = datetime.strptime(episode.conception_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                ref_time = meas_time if meas_time.tzinfo else meas_time.replace(tzinfo=timezone.utc)
+                diff_days = (ref_time - c_date).days
+                if diff_days > 0:
+                    ga_weeks = round(diff_days / 7.0, 1)
+            except Exception:
+                pass
+        if ga_weeks is None and episode and episode.current_gestational_age_weeks:
+            ga_weeks = episode.current_gestational_age_weeks
 
     is_abnormal = False
     if req.test_name.lower() in ("systolic_bp", "sbp") and req.value_numeric and req.value_numeric >= 140:

@@ -1,0 +1,37 @@
+# Environment configuration & secrets
+.env
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+backend/storage/documents/*
+!backend/storage/documents/.gitkeep
+
+# Database
+*.db
+*.sqlite3
+backend/pregtwin.db
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.vite/
+*.local
+
+# Archives
+*.zip
+PregTwin_Platform.zip

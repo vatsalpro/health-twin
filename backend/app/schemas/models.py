@@ -135,7 +135,7 @@ class ClinicalObservationSchema(BaseModel):
     reference_range: Optional[str] = None
     is_abnormal: bool
     measurement_timestamp: datetime
-    gestational_age_weeks: float
+    gestational_age_weeks: Optional[float] = None
     source_type: str
     review_status: str
     source_document_id: Optional[str] = None
@@ -157,7 +157,7 @@ class MaternalTwinStateSchema(BaseModel):
     patient_id: str
     version: int
     timestamp: datetime
-    gestational_age_weeks: float
+    gestational_age_weeks: Optional[float] = None
     sbp: Optional[float] = None
     dbp: Optional[float] = None
     map_pressure: Optional[float] = None
@@ -185,7 +185,7 @@ class RiskPredictionSchema(BaseModel):
     patient_id: str
     model_version: str
     prediction_timestamp: datetime
-    gestational_age_weeks: float
+    gestational_age_weeks: Optional[float] = None
     prediction_horizon_days: int
     risk_score: Optional[float] = None  # None if insufficient data
     risk_category: str
@@ -200,14 +200,14 @@ class RiskPredictionSchema(BaseModel):
 # --- Simulation Lab Schemas ---
 class SimulationRequest(BaseModel):
     baseline_prediction_id: Optional[str] = None
-    gestational_age_weeks: float
-    sbp: float
-    dbp: float
-    proteinuria_dipstick: str
-    platelets: float
-    ast: float
-    alt: float
-    serum_creatinine: float
+    gestational_age_weeks: float = Field(..., ge=20.0, le=45.0, description="Gestational age in weeks (20.0 to 45.0)")
+    sbp: float = Field(..., ge=70.0, le=240.0, description="Systolic blood pressure (70 to 240 mmHg)")
+    dbp: float = Field(..., ge=40.0, le=160.0, description="Diastolic blood pressure (40 to 160 mmHg)")
+    proteinuria_dipstick: str = Field(..., description="Proteinuria dipstick grade")
+    platelets: float = Field(..., ge=10.0, le=800.0, description="Platelets (10 to 800 x10^3/uL)")
+    ast: float = Field(..., ge=5.0, le=500.0, description="AST (5 to 500 U/L)")
+    alt: float = Field(..., ge=5.0, le=500.0, description="ALT (5 to 500 U/L)")
+    serum_creatinine: float = Field(..., ge=0.1, le=15.0, description="Serum Creatinine (0.1 to 15.0 mg/dL)")
 
 class SimulationResponse(BaseModel):
     scenario_label: str = "Hypothetical Illustrative Simulation"

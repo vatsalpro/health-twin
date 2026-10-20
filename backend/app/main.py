@@ -71,3 +71,30 @@ def root():
 @app.get("/health")
 def healthcheck():
     return {"status": "healthy"}
+
+@app.get("/ready")
+def readiness_check():
+    """Readiness probe verifying database connectivity and storage directory availability."""
+    db_ok = False
+    storage_ok = False
+    details = {}
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_ok = True
+        details["database"] = "connected"
+    except Exception as e:
+        details["database"] = f"unreachable: {str(e)}"
+
+    try:
+        os.makedirs(settings.STORAGE_PATH, exist_ok=True)
+        storage_ok = os.path.exists(settings.STORAGE_PATH) and os.access(settings.STORAGE_PATH, os.W_OK)
+        details["storage"] = "writable" if storage_ok else "not_writable"
+    except Exception as e:
+        details["storage"] = f"error: {str(e)}"
+
+    if db_ok and storage_ok:
+        return {"status": "ready", "details": details}
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=503, content={"status": "not_ready", "details": details})

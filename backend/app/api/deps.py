@@ -31,12 +31,14 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token missing user identity",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
+            detail="User not found or account is inactive",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return user
 
@@ -59,14 +61,15 @@ def verify_patient_access(
     if not patient:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient profile not found")
     
-    # Clinicians and Admins have authorized research/clinical oversight
+    # Clinicians and Admins have authorized clinical oversight
     if current_user.role in ("clinician", "admin"):
         return patient
     
-    # Patient role can ONLY access their own linked record
+    # Patient role can ONLY access their own linked record.
+    # Return 404 to avoid leaking existence of other patient identifiers.
     if patient.user_id != current_user.id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Unauthorized: You do not have permission to view or modify this patient record",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient profile not found",
         )
     return patient

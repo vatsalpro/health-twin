@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.models.entities import AuditEvent, User
 from app.schemas.models import AuditEventSchema
 from app.api.deps import require_clinician, get_current_user
+from app.services.document_processor import get_tesseract_cmd
 
 router = APIRouter(tags=["Audit & Diagnostics"])
 
@@ -59,7 +60,8 @@ def get_system_diagnostics(
     Returns system status, active integrations, and clear explanations
     of any unconfigured external services without masking.
     """
-    ocr_installed = bool(settings.TESSERACT_CMD and os.path.exists(settings.TESSERACT_CMD)) or bool(shutil.which("tesseract"))
+    ocr_cmd = get_tesseract_cmd()
+    ocr_installed = bool(ocr_cmd)
     openai_configured = bool(settings.OPENAI_API_KEY and len(settings.OPENAI_API_KEY.strip()) > 5)
 
     return {

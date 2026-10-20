@@ -1,6 +1,8 @@
+import os
 import httpx
 
-client = httpx.Client(base_url="http://127.0.0.1:8000")
+port = os.getenv("PORT", "8008")
+client = httpx.Client(base_url=f"http://127.0.0.1:{port}")
 
 # 1. Login
 auth_resp = client.post("/api/v1/auth/login", json={"email": "dr.elena@pregtwin.org", "password": "Clinician2026!"})
@@ -50,7 +52,9 @@ print(f"Simulation Outcome: Baseline={sim['baseline_risk_score']}, Simulated={si
 eval_resp = client.get("/api/v1/models/preeclampsia/evaluation", headers=headers)
 assert eval_resp.status_code == 200
 eval_data = eval_resp.json()
-print(f"Research Model Metrics: AUROC={eval_data['metrics']['auroc']}, AUPRC={eval_data['metrics']['auprc']}, Cohort Size={eval_data['evaluation_cohort']['total_patients']}")
+assert eval_data["evaluation_status"] == "not_evaluated"
+assert eval_data["metrics_available"] is False
+print(f"Research Model Evaluation: Status={eval_data['evaluation_status']}, MetricsAvailable={eval_data['metrics_available']}, Message='{eval_data['message']}'")
 
 p3 = patients[2] # Clara Novak
 preds_p3 = client.get(f"/api/v1/patients/{p3['id']}/predictions", headers=headers).json()

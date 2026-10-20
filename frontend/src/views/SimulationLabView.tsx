@@ -19,6 +19,7 @@ export const SimulationLabView: React.FC = () => {
   const [baselinePred, setBaselinePred] = useState<RiskPrediction | null>(null);
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
   const [simulating, setSimulating] = useState<boolean>(false);
+  const [simulationError, setSimulationError] = useState<string | null>(null);
 
   // Scenario parameters
   const [ga, setGa] = useState<number>(31.4);
@@ -76,6 +77,7 @@ export const SimulationLabView: React.FC = () => {
   const runSimulation = async (customParams?: any) => {
     if (!selectedPatientId) return;
     setSimulating(true);
+    setSimulationError(null);
     const payload = customParams || {
       gestational_age_weeks: ga,
       sbp: sbp,
@@ -89,8 +91,10 @@ export const SimulationLabView: React.FC = () => {
     try {
       const res = await api.simulateScenario(selectedPatientId, payload);
       setSimulationResult(res);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Simulation call failed:', err);
+      const msg = err.response?.data?.detail || err.message || 'Counterfactual simulation failed.';
+      setSimulationError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setSimulating(false);
     }
@@ -137,6 +141,20 @@ export const SimulationLabView: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {simulationError && (
+        <div className="p-4 rounded-xl bg-[#F43F5E]/10 border border-[#F43F5E]/30 text-xs text-[#F43F5E] flex items-start gap-3">
+          <Info className="w-5 h-5 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold uppercase tracking-wider font-mono text-[11px] block">
+              Simulation Notice
+            </span>
+            <p className="text-[#F4F7FC] leading-relaxed text-[11px] mt-0.5">
+              {simulationError}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Workspace: 3D Visualization + Sliders + Outcome Comparison */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

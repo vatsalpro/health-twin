@@ -1,5 +1,7 @@
 import os
 import json
+import uuid
+import re
 from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
@@ -14,6 +16,7 @@ from app.models.entities import (
     ExtractedField,
     ReportSummary,
     ClinicalObservation,
+    PregnancyEpisode,
 )
 from app.schemas.models import (
     MedicalDocumentResponse,
@@ -30,6 +33,42 @@ from app.services.prediction_service import prediction_engine
 from app.services.audit_service import audit_service
 
 router = APIRouter(prefix="/documents", tags=["Medical Documents"])
+
+def _resolve_observation_gestational_age(db: Session, patient_id: str, doc: Optional[MedicalDocument], meas_time: datetime) -> Optional[float]:
+    """
+    Deterministically resolves gestational age for clinical observations extracted from documents.
+    1. Checks if document contains an extracted gestational age field.
+    2. Checks patient's active pregnancy episode conception date.
+    3. Checks patient's recorded current gestational age.
+    Never falls back to arbitrary hardcoded numbers (e.g. 28.0).
+    """
+    if doc and doc.extracted_fields:
+        for f in doc.extracted_fields:
+            if f.field_name and f.field_name.lower() in ("gestational_age", "ga", "gestational_age_weeks") and f.extracted_value:
+                try:
+                    match = re.search(r"([1-4]?\d(?:\.[0-6])?)", str(f.extracted_value))
+                    if match:
+                        ga = float(match.group(1))
+                        if 4.0 <= ga <= 45.0:
+                            return ga
+                except Exception:
+                    pass
+
+    episode = db.query(PregnancyEpisode).filter(PregnancyEpisode.patient_id == patient_id, PregnancyEpisode.is_active == True).first()
+    if episode and episode.conception_date:
+        try:
+            c_date = datetime.strptime(episode.conception_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            ref_time = meas_time if meas_time.tzinfo else meas_time.replace(tzinfo=timezone.utc)
+            diff_days = (ref_time - c_date).days
+            if diff_days > 0:
+                return round(diff_days / 7.0, 1)
+        except Exception:
+            pass
+
+    if episode and episode.current_gestational_age_weeks:
+        return episode.current_gestational_age_weeks
+
+    return None
 
 def _format_document_response(doc: MedicalDocument) -> MedicalDocumentResponse:
     fields_data = []
@@ -114,25 +153,30 @@ async def upload_document(
     verify_patient_access(patient_id, current_user, db)
 
     file_bytes = await file.read()
-    file_size = len(file_bytes)
-    if file_size > 30 * 1024 * 1024:  # 30 MB max
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File exceeds maximum size limit (30MB)")
+    filename = file.filename or "uploaded_document.pdf"
+    content_type = file.content_type or "application/pdf"
 
+    # Validate file size and signature/magic bytes
+    is_valid, validation_msg = document_processor.validate_file(file_bytes, filename, content_type)
+    if not is_valid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=validation_msg)
+
+    file_size = len(file_bytes)
     file_hash = document_processor.calculate_file_hash(file_bytes)
-    doc_id = str(file_hash[:16])
+    doc_id = str(uuid.uuid4())
 
     # Save to private storage
-    file_path = document_processor.save_file(patient_id, doc_id, file.filename, file_bytes)
+    file_path = document_processor.save_file(patient_id, doc_id, filename, file_bytes)
 
     # Persistent document record
     doc = MedicalDocument(
         id=doc_id,
         patient_id=patient_id,
-        filename=file.filename,
+        filename=filename,
         file_path=file_path,
         file_hash=file_hash,
         file_size_bytes=file_size,
-        mime_type=file.content_type or "application/pdf",
+        mime_type=content_type,
         category=category,
         report_date=report_date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         source_institution=source_institution or "Obstetric Clinical Center",
@@ -259,46 +303,69 @@ def review_extracted_field(
 
     effective_val = field.clinician_correction if (decision == "MODIFY" and field.clinician_correction) else field.extracted_value
 
-    # If ACCEPT or MODIFY, convert to an accepted ClinicalObservation
+    # Check for existing observation linked to this extracted field
+    existing_obs = (
+        db.query(ClinicalObservation)
+        .filter(ClinicalObservation.source_extracted_field_id == field.id)
+        .first()
+    )
+
+    # If ACCEPT or MODIFY, convert to an accepted ClinicalObservation idempotently
     if decision in ("ACCEPT", "MODIFY"):
         val_num = None
         try:
             val_num = float(effective_val)
-        except ValueError:
+        except (ValueError, TypeError):
             pass
 
         # Measurement timestamp from document report_date
         meas_time = datetime.now(timezone.utc)
-        if field.document.report_date:
+        if field.document and field.document.report_date:
             try:
                 meas_time = datetime.strptime(field.document.report_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
             except Exception:
                 pass
 
-        obs = ClinicalObservation(
-            patient_id=field.patient_id,
-            source_document_id=field.document_id,
-            source_extracted_field_id=field.id,
-            observation_type=field.category,
-            test_name=field.field_name,
-            value_numeric=val_num,
-            value_text=effective_val,
-            unit=field.unit,
-            is_abnormal="ALERT" in field.validation_status,
-            measurement_timestamp=meas_time,
-            gestational_age_weeks=28.0,
-            source_type="accepted_document",
-            review_status="ACCEPTED"
-        )
-        db.add(obs)
-        db.commit()
+        obs_ga = _resolve_observation_gestational_age(db, field.patient_id, field.document, meas_time)
 
-        # Update digital twin state snapshot and recompute prediction
-        twin_service.update_twin_state(db, field.patient_id)
-        prediction_engine.evaluate_risk(db, field.patient_id)
+        if existing_obs:
+            existing_obs.observation_type = field.category
+            existing_obs.test_name = field.field_name
+            existing_obs.value_numeric = val_num
+            existing_obs.value_text = effective_val
+            existing_obs.unit = field.unit
+            existing_obs.is_abnormal = "ALERT" in (field.validation_status or "")
+            existing_obs.measurement_timestamp = meas_time
+            existing_obs.gestational_age_weeks = obs_ga
+            existing_obs.review_status = "ACCEPTED"
+        else:
+            obs = ClinicalObservation(
+                patient_id=field.patient_id,
+                source_document_id=field.document_id,
+                source_extracted_field_id=field.id,
+                observation_type=field.category,
+                test_name=field.field_name,
+                value_numeric=val_num,
+                value_text=effective_val,
+                unit=field.unit,
+                is_abnormal="ALERT" in (field.validation_status or ""),
+                measurement_timestamp=meas_time,
+                gestational_age_weeks=obs_ga,
+                source_type="accepted_document",
+                review_status="ACCEPTED"
+            )
+            db.add(obs)
+
+    elif decision == "REJECT":
+        if existing_obs:
+            db.delete(existing_obs)
 
     db.commit()
     db.refresh(field)
+
+    # Update digital twin state snapshot and recompute prediction
+    twin_service.update_twin_state(db, field.patient_id)
+    prediction_engine.evaluate_risk(db, field.patient_id)
 
     audit_service.log_event(
         db=db,
@@ -328,6 +395,8 @@ def accept_all_document_fields(
         except Exception:
             pass
 
+    obs_ga = _resolve_observation_gestational_age(db, doc.patient_id, doc, meas_time)
+
     for field in doc.extracted_fields:
         field.review_status = "ACCEPTED"
         field.reviewed_by_id = current_user.id
@@ -336,25 +405,42 @@ def accept_all_document_fields(
         val_num = None
         try:
             val_num = float(field.extracted_value)
-        except ValueError:
+        except (ValueError, TypeError):
             pass
 
-        obs = ClinicalObservation(
-            patient_id=field.patient_id,
-            source_document_id=field.document_id,
-            source_extracted_field_id=field.id,
-            observation_type=field.category,
-            test_name=field.field_name,
-            value_numeric=val_num,
-            value_text=field.extracted_value,
-            unit=field.unit,
-            is_abnormal="ALERT" in field.validation_status,
-            measurement_timestamp=meas_time,
-            gestational_age_weeks=28.0,
-            source_type="accepted_document",
-            review_status="ACCEPTED"
+        existing_obs = (
+            db.query(ClinicalObservation)
+            .filter(ClinicalObservation.source_extracted_field_id == field.id)
+            .first()
         )
-        db.add(obs)
+
+        if existing_obs:
+            existing_obs.observation_type = field.category
+            existing_obs.test_name = field.field_name
+            existing_obs.value_numeric = val_num
+            existing_obs.value_text = field.extracted_value
+            existing_obs.unit = field.unit
+            existing_obs.is_abnormal = "ALERT" in (field.validation_status or "")
+            existing_obs.measurement_timestamp = meas_time
+            existing_obs.gestational_age_weeks = obs_ga
+            existing_obs.review_status = "ACCEPTED"
+        else:
+            obs = ClinicalObservation(
+                patient_id=field.patient_id,
+                source_document_id=field.document_id,
+                source_extracted_field_id=field.id,
+                observation_type=field.category,
+                test_name=field.field_name,
+                value_numeric=val_num,
+                value_text=field.extracted_value,
+                unit=field.unit,
+                is_abnormal="ALERT" in (field.validation_status or ""),
+                measurement_timestamp=meas_time,
+                gestational_age_weeks=obs_ga,
+                source_type="accepted_document",
+                review_status="ACCEPTED"
+            )
+            db.add(obs)
 
     doc.processing_status = "COMPLETED"
     db.commit()

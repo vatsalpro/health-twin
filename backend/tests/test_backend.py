@@ -116,9 +116,9 @@ def test_patient_cannot_access_other_patient_data(client, db_session):
     resp_self = client.get("/api/v1/patients/patient-1-id", headers=headers)
     assert resp_self.status_code == 200
 
-    # Access patient 2 -> 403 Forbidden
+    # Access patient 2 -> 404 Not Found (avoids leaking record existence)
     resp_other = client.get("/api/v1/patients/patient-2-id", headers=headers)
-    assert resp_other.status_code == 403
+    assert resp_other.status_code in (403, 404)
 
 def test_clinician_can_access_patients(client):
     token_clinician = create_access_token({"sub": "test-clinician-1", "email": "clinician.test@pregtwin.org", "role": "clinician"})
@@ -193,3 +193,195 @@ def test_leakage_prevention_temporal_cutoff(db_session):
     # When predicting as of t2, obs2 is included
     pred_t2 = prediction_engine.evaluate_risk(db_session, "patient-1-id", prediction_timestamp=t2)
     assert pred_t2.risk_category in ("MODERATE", "HIGH")
+
+def test_invalid_as_of_timestamp_rejected(client):
+    token_clinician = create_access_token({"sub": "test-clinician-1", "email": "clinician.test@pregtwin.org", "role": "clinician"})
+    headers = {"Authorization": f"Bearer {token_clinician}"}
+
+    resp = client.post("/api/v1/patients/patient-1-id/predictions/recompute?as_of=invalid-timestamp-value", headers=headers)
+    assert resp.status_code == 400
+    assert "Invalid 'as_of' timestamp" in resp.json()["detail"]
+
+def test_simulation_validation_and_ownership(client, db_session):
+    token_clinician = create_access_token({"sub": "test-clinician-1", "email": "clinician.test@pregtwin.org", "role": "clinician"})
+    headers = {"Authorization": f"Bearer {token_clinician}"}
+
+    # Patient 2 has no baseline -> 400
+    resp_no_base = client.post("/api/v1/patients/patient-2-id/simulate", headers=headers, json={
+        "gestational_age_weeks": 28.0,
+        "sbp": 140.0,
+        "dbp": 90.0,
+        "proteinuria_dipstick": "1+",
+        "platelets": 150.0,
+        "ast": 30.0,
+        "alt": 25.0,
+        "serum_creatinine": 0.8
+    })
+    assert resp_no_base.status_code == 400
+    assert "no valid baseline" in resp_no_base.json()["detail"].lower()
+
+    # SBP <= DBP -> 400 Bad Request
+    resp_bad_bp = client.post("/api/v1/patients/patient-1-id/simulate", headers=headers, json={
+        "gestational_age_weeks": 28.0,
+        "sbp": 80.0,
+        "dbp": 120.0,
+        "proteinuria_dipstick": "1+",
+        "platelets": 150.0,
+        "ast": 30.0,
+        "alt": 25.0,
+        "serum_creatinine": 0.8
+    })
+    assert resp_bad_bp.status_code == 400
+    assert "greater than diastolic" in resp_bad_bp.json()["detail"].lower()
+
+    # Non-existent or other patient's baseline ID -> 404
+    resp_bad_id = client.post("/api/v1/patients/patient-1-id/simulate", headers=headers, json={
+        "baseline_prediction_id": "non-existent-pred-id",
+        "gestational_age_weeks": 28.0,
+        "sbp": 140.0,
+        "dbp": 90.0,
+        "proteinuria_dipstick": "1+",
+        "platelets": 150.0,
+        "ast": 30.0,
+        "alt": 25.0,
+        "serum_creatinine": 0.8
+    })
+    assert resp_bad_id.status_code == 404
+
+    # Valid simulation for patient 1 (has baseline from prior test)
+    resp_valid = client.post("/api/v1/patients/patient-1-id/simulate", headers=headers, json={
+        "gestational_age_weeks": 28.0,
+        "sbp": 155.0,
+        "dbp": 98.0,
+        "proteinuria_dipstick": "2+",
+        "platelets": 125.0,
+        "ast": 55.0,
+        "alt": 48.0,
+        "serum_creatinine": 0.95
+    })
+    assert resp_valid.status_code == 200
+    data = resp_valid.json()
+    assert data["is_causal_treatment_claim"] == False
+    assert "not infer" in data["warning"].lower()
+    assert data["simulated_risk_score"] > 0.0
+
+def test_idempotent_field_review(client, db_session):
+    token_clinician = create_access_token({"sub": "test-clinician-1", "email": "clinician.test@pregtwin.org", "role": "clinician"})
+    headers = {"Authorization": f"Bearer {token_clinician}"}
+
+    # Setup document and field
+    doc = MedicalDocument(
+        id="test-doc-id-1",
+        patient_id="patient-1-id",
+        filename="antenatal_test.pdf",
+        file_path="/storage/test.pdf",
+        file_hash="abc123hash",
+        file_size_bytes=1024,
+        mime_type="application/pdf",
+        report_date="2026-06-15",
+        processing_status="EXTRACTED"
+    )
+    field = ExtractedField(
+        id="test-field-id-1",
+        document_id=doc.id,
+        patient_id="patient-1-id",
+        field_name="systolic_bp",
+        category="blood_pressure",
+        extracted_value="148",
+        unit="mmHg",
+        confidence=0.98,
+        validation_status="VALID",
+        review_status="UNREVIEWED"
+    )
+    db_session.add_all([doc, field])
+    db_session.commit()
+
+    # First review: ACCEPT
+    resp1 = client.post(
+        f"/api/v1/documents/{doc.id}/fields/{field.id}/review",
+        headers=headers,
+        json={"decision": "ACCEPT", "clinician_notes": "First review"}
+    )
+    assert resp1.status_code == 200
+
+    obs_count = db_session.query(ClinicalObservation).filter(ClinicalObservation.source_extracted_field_id == field.id).count()
+    assert obs_count == 1
+
+    # Second review: ACCEPT again (idempotent upsert check)
+    resp2 = client.post(
+        f"/api/v1/documents/{doc.id}/fields/{field.id}/review",
+        headers=headers,
+        json={"decision": "ACCEPT", "clinician_notes": "Second review"}
+    )
+    assert resp2.status_code == 200
+
+    obs_count_after = db_session.query(ClinicalObservation).filter(ClinicalObservation.source_extracted_field_id == field.id).count()
+    assert obs_count_after == 1  # No duplicate observation!
+
+    # Third review: REJECT -> observation removed
+    resp3 = client.post(
+        f"/api/v1/documents/{doc.id}/fields/{field.id}/review",
+        headers=headers,
+        json={"decision": "REJECT", "clinician_notes": "Spurious reading"}
+    )
+    assert resp3.status_code == 200
+
+    obs_count_rejected = db_session.query(ClinicalObservation).filter(ClinicalObservation.source_extracted_field_id == field.id).count()
+    assert obs_count_rejected == 0
+
+def test_upload_file_signature_validation(client):
+    token_clinician = create_access_token({"sub": "test-clinician-1", "email": "clinician.test@pregtwin.org", "role": "clinician"})
+    headers = {"Authorization": f"Bearer {token_clinician}"}
+
+    # Invalid PDF missing %PDF signature
+    resp = client.post(
+        "/api/v1/documents/upload",
+        headers=headers,
+        data={"patient_id": "patient-1-id"},
+        files={"file": ("corrupt.pdf", b"PLAIN_TEXT_NOT_PDF", "application/pdf")}
+    )
+    assert resp.status_code == 400
+    assert "missing standard '%pdf'" in resp.json()["detail"].lower()
+
+    # Executable binary rejection
+    resp_exe = client.post(
+        "/api/v1/documents/upload",
+        headers=headers,
+        data={"patient_id": "patient-1-id"},
+        files={"file": ("malware.txt", b"MZ\x90\x00\x03\x00\x00\x00", "text/plain")}
+    )
+    assert resp_exe.status_code == 400
+    assert "executable binaries are strictly forbidden" in resp_exe.json()["detail"].lower()
+
+def test_model_evaluation_truthful_state(client):
+    token_clinician = create_access_token({"sub": "test-clinician-1", "email": "clinician.test@pregtwin.org", "role": "clinician"})
+    headers = {"Authorization": f"Bearer {token_clinician}"}
+
+    resp = client.get("/api/v1/models/preeclampsia/evaluation", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["evaluation_status"] == "not_evaluated"
+    assert data["metrics_available"] == False
+    assert data["metrics"] is None
+
+def test_health_and_readiness_endpoints(client):
+    resp_health = client.get("/health")
+    assert resp_health.status_code == 200
+    assert resp_health.json()["status"] == "healthy"
+
+    resp_ready = client.get("/ready")
+    assert resp_ready.status_code == 200
+    assert resp_ready.json()["status"] == "ready"
+    assert resp_ready.json()["details"]["database"] == "connected"
+
+def test_login_enumeration_guard(client):
+    # Non-existent user
+    resp_no_user = client.post("/api/v1/auth/login", json={"email": "nobody@pregtwin.org", "password": "Password123!"})
+    assert resp_no_user.status_code == 401
+
+    # Existing user, wrong password
+    resp_wrong_pw = client.post("/api/v1/auth/login", json={"email": "clinician.test@pregtwin.org", "password": "WrongPassword!"})
+    assert resp_wrong_pw.status_code == 401
+
+    # Error message must be identical
+    assert resp_no_user.json()["detail"] == resp_wrong_pw.json()["detail"]

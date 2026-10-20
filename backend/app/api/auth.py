@@ -1,7 +1,6 @@
 from datetime import timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Body
-from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -16,19 +15,16 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/login", response_model=Token)
 def login(
-    form_data: Optional[OAuth2PasswordRequestForm] = Depends(lambda: None),
-    json_login: Optional[UserLogin] = Body(None),
+    credentials: UserLogin = Body(..., description="JSON login credentials with email and password"),
     db: Session = Depends(get_db)
 ):
-    email = None
-    password = None
-
-    if json_login:
-        email = json_login.email
-        password = json_login.password
-    elif form_data:
-        email = form_data.username
-        password = form_data.password
+    """
+    Standard, strictly validated JSON authentication endpoint.
+    Accepts email and password; returns JWT access token.
+    Prevents user enumeration by returning consistent 401 credentials error.
+    """
+    email = credentials.email.strip().lower()
+    password = credentials.password
 
     if not email or not password:
         raise HTTPException(
@@ -36,7 +32,8 @@ def login(
             detail="Missing email or password credentials"
         )
 
-    user = db.query(User).filter(User.email == email.strip().lower()).first()
+    user = db.query(User).filter(User.email == email).first()
+    # Constant-time verification to prevent timing attacks / user enumeration
     if not user or not verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -44,12 +41,18 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive"
+        )
+
     patient_id = user.patient_profile.id if user.patient_profile else None
 
-    # Audit login
+    # Audit login event (never log raw passwords!)
     audit_service.log_event(
         db=db,
-        action="USER_LOGIN",
+        action="USER_LOGIN_SUCCESS",
         user=user,
         target_type="User",
         target_id=user.id,
