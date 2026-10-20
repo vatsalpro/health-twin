@@ -197,6 +197,10 @@ export interface SystemDiagnostics {
     openai_api_key_set: boolean;
     openai_model?: string;
     ollama_base_url?: string;
+    ollama_model?: string;
+    ollama_reachable?: boolean;
+    ollama_model_available?: boolean;
+    ollama_latency_ms?: number;
     fallback_active: boolean;
     notice: string;
   };

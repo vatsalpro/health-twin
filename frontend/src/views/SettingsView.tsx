@@ -66,12 +66,14 @@ export const SettingsView: React.FC = () => {
             </h3>
             <span
               className={`px-2.5 py-0.5 rounded text-[10px] font-mono font-bold ${
-                diagnostics?.ai_provider.openai_api_key_set
+                !diagnostics?.ai_provider.fallback_active
                   ? 'bg-[#43D6B0]/20 text-[#43D6B0]'
                   : 'bg-[#E9B96E]/20 text-[#E9B96E]'
               }`}
             >
-              {diagnostics?.ai_provider.openai_api_key_set ? 'ONLINE' : 'FALLBACK ACTIVE'}
+              {!diagnostics?.ai_provider.fallback_active
+                ? (diagnostics?.ai_provider.configured_provider === 'ollama' ? 'OLLAMA ONLINE' : 'OPENAI ONLINE')
+                : 'FALLBACK ACTIVE'}
             </span>
           </div>
 
@@ -79,15 +81,41 @@ export const SettingsView: React.FC = () => {
             <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
               <span className="text-[#A5B3C8]">Configured Adapter:</span>
               <span className="font-mono text-[#F4F7FC] font-semibold">
-                {diagnostics?.ai_provider.configured_provider || 'openai'}
+                {diagnostics?.ai_provider.configured_provider === 'ollama'
+                  ? 'Local Ollama (Offline / On-Device)'
+                  : (diagnostics?.ai_provider.configured_provider || 'openai')}
               </span>
             </div>
-            <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
-              <span className="text-[#A5B3C8]">OpenAI Key Configured:</span>
-              <span className="font-mono text-[#F4F7FC]">
-                {diagnostics?.ai_provider.openai_api_key_set ? 'Yes (Stored in backend .env)' : 'No (Using local rules)'}
-              </span>
-            </div>
+
+            {diagnostics?.ai_provider.configured_provider === 'ollama' ? (
+              <>
+                <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
+                  <span className="text-[#A5B3C8]">Local Model:</span>
+                  <span className="font-mono text-[#5BE7E8] font-bold">
+                    {diagnostics?.ai_provider.ollama_model || 'llama3.2:3b'}
+                  </span>
+                </div>
+                <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
+                  <span className="text-[#A5B3C8]">Ollama Service API:</span>
+                  <span className="font-mono text-[#F4F7FC]">
+                    {diagnostics?.ai_provider.ollama_base_url || 'http://localhost:11434'} (
+                    {diagnostics?.ai_provider.ollama_reachable ? (
+                      <span className="text-[#43D6B0]">Reachable</span>
+                    ) : (
+                      <span className="text-[#F43F5E]">Offline</span>
+                    )}
+                    )
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
+                <span className="text-[#A5B3C8]">OpenAI Key Configured:</span>
+                <span className="font-mono text-[#F4F7FC]">
+                  {diagnostics?.ai_provider.openai_api_key_set ? 'Yes (Stored in backend .env)' : 'No (Using local rules)'}
+                </span>
+              </div>
+            )}
           </div>
 
           <p className="text-[11px] text-[#A5B3C8] leading-relaxed bg-[#101A2B] p-3 rounded-xl border border-[rgba(166,190,220,0.1)]">

@@ -4,8 +4,20 @@ import json
 from typing import List
 from dotenv import load_dotenv
 
-# Load .env file from backend or root directory
-load_dotenv()
+# Bulletproof .env location: checks backend directory, parent workspace directory, and current directory
+_cur_dir = os.path.dirname(os.path.abspath(__file__)) # backend/app/core
+_backend_dir = os.path.dirname(os.path.dirname(_cur_dir)) # backend
+_workspace_dir = os.path.dirname(_backend_dir) # workspace root
+
+_backend_env = os.path.join(_backend_dir, ".env")
+_workspace_env = os.path.join(_workspace_dir, ".env")
+
+if os.path.exists(_backend_env):
+    load_dotenv(_backend_env)
+elif os.path.exists(_workspace_env):
+    load_dotenv(_workspace_env)
+else:
+    load_dotenv()
 
 KNOWN_DEV_SECRETS = {
     "pregtwin-secure-research-secret-key-3.14-jwt-token-seed-2026",
@@ -66,12 +78,13 @@ class Settings:
     if "*" in CORS_ORIGINS and ENVIRONMENT == "production":
         raise RuntimeError("FATAL: Wildcard '*' in CORS_ORIGINS is forbidden when credentials are enabled.")
     
-    # AI & Extraction Provider
-    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "openai")  # openai, ollama, or fallback
+    # AI & Extraction Provider (defaults to local Ollama on localhost:11434)
+    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "ollama")  # ollama, openai, or fallback
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2-vision")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+    OLLAMA_TIMEOUT_SECONDS: float = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "120.0"))
     
     # OCR Engine
     OCR_ENGINE: str = os.getenv("OCR_ENGINE", "tesseract")

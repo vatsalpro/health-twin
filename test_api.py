@@ -61,4 +61,15 @@ preds_p3 = client.get(f"/api/v1/patients/{p3['id']}/predictions", headers=header
 print(f"Clara Novak Guard Check: GA={p3['episodes'][0]['current_gestational_age_weeks']}w, Category={preds_p3[0]['risk_category']}, InsufficientData={preds_p3[0]['is_insufficient_data']}")
 print(f" -> Reason: {preds_p3[0]['insufficient_data_reason']}")
 
+# 7. System Diagnostics (Ollama & OCR verification)
+diag_resp = client.get("/api/v1/system/diagnostics", headers=headers)
+assert diag_resp.status_code == 200
+diag = diag_resp.json()
+assert diag["ai_provider"]["configured_provider"] == "ollama"
+assert diag["ai_provider"]["ollama_model"] == "llama3.2:3b"
+assert diag["ai_provider"]["ollama_reachable"] is True
+assert diag["ai_provider"]["ollama_model_available"] is True
+print(f"System Diagnostics: Provider={diag['ai_provider']['configured_provider']}, Model={diag['ai_provider']['ollama_model']}, Reachable={diag['ai_provider']['ollama_reachable']}, ModelAvailable={diag['ai_provider']['ollama_model_available']}")
+print(f"Notice: {diag['ai_provider']['notice']}")
+
 print("\nALL BACKEND API WORKFLOW CHECKS PASSED PERFECTLY!")

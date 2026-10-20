@@ -11,6 +11,7 @@ from app.core.security import hash_password, create_access_token
 from app.models.entities import User, PatientProfile, PregnancyEpisode, ClinicalObservation, ExtractedField, MedicalDocument
 from app.services.twin_service import twin_service
 from app.services.prediction_service import prediction_engine
+from app.services.ai_extractor import ai_extractor
 
 # Use an in-memory SQLite database with StaticPool for test isolation
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -385,3 +386,72 @@ def test_login_enumeration_guard(client):
 
     # Error message must be identical
     assert resp_no_user.json()["detail"] == resp_wrong_pw.json()["detail"]
+
+@pytest.mark.anyio
+async def test_ollama_availability_check():
+    avail = await ai_extractor.check_ollama_availability()
+    assert avail["reachable"] is True
+    assert avail["model_available"] is True
+    assert avail["configured_model"] == "llama3.2:3b"
+    assert "llama3.2:3b" in avail["installed_models"]
+    assert avail["error"] is None
+
+def test_ollama_normalization_and_bounds_guard():
+    # Valid BP normalization
+    norm_s = ai_extractor._validate_and_normalize_field({"field_name": "sbp", "extracted_value": "144", "unit": "mmHg"})
+    assert norm_s is not None
+    assert norm_s["field_name"] == "systolic_bp"
+    assert norm_s["extracted_value"] == "144"
+    assert norm_s["category"] == "blood_pressure"
+
+    # Physiological implausibility rejection
+    bad_bp = ai_extractor._validate_and_normalize_field({"field_name": "sbp", "extracted_value": "999"})
+    assert bad_bp is None
+
+    bad_ga = ai_extractor._validate_and_normalize_field({"field_name": "gestational_age", "extracted_value": "65.0"})
+    assert bad_ga is None
+
+    # Complex Gestational age parsing (30w2d -> 30.3)
+    norm_ga = ai_extractor._validate_and_normalize_field({"field_name": "gestational_age", "extracted_value": "30 weeks 2 days"})
+    assert norm_ga is not None
+    assert norm_ga["field_name"] == "gestational_age_weeks"
+    assert norm_ga["extracted_value"] == "30.3"
+
+    # Glucose normalization
+    norm_glu = ai_extractor._validate_and_normalize_field({"field_name": "fasting_glucose", "extracted_value": "92", "unit": "mg/dL"})
+    assert norm_glu is not None
+    assert norm_glu["category"] == "glucose_metabolism"
+    assert norm_glu["extracted_value"] == "92"
+
+@pytest.mark.anyio
+async def test_ollama_model_unavailable_fallback():
+    # Simulate an unavailable or misconfigured model
+    orig_model = ai_extractor.ollama_model
+    try:
+        ai_extractor.ollama_model = "non-existent-model-xyz-123"
+        # Should gracefully fallback to deterministic clinical rules
+        result = await ai_extractor.extract_and_summarize(
+            text="Patient blood pressure: 142/90 mmHg. Platelets: 180. Urine protein: negative.",
+            pages_data=[]
+        )
+        assert len(result.extracted_fields) >= 2
+        assert "systolic_bp" in [f["field_name"] for f in result.extracted_fields]
+        assert "Deterministic Clinical Rules" in result.provider_name
+    finally:
+        ai_extractor.ollama_model = orig_model
+
+def test_system_diagnostics_ollama(client):
+    token_clinician = create_access_token({"sub": "test-clinician-1", "email": "clinician.test@pregtwin.org", "role": "clinician"})
+    headers = {"Authorization": f"Bearer {token_clinician}"}
+
+    resp = client.get("/api/v1/system/diagnostics", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["ai_provider"]["configured_provider"] == "ollama"
+    assert data["ai_provider"]["ollama_model"] == "llama3.2:3b"
+    assert data["ai_provider"]["ollama_reachable"] is True
+    assert data["ai_provider"]["ollama_model_available"] is True
+    assert "llama3.2:3b" in data["ai_provider"]["ollama_installed_models"]
+    assert data["ocr_engine"]["configured_engine"] == "tesseract"
+    assert "Tesseract" in data["ocr_engine"]["notice"]
