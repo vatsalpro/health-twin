@@ -119,7 +119,7 @@ Expectant mothers under acute psychosocial stress experience sympathetic nervous
 - **Database:** SQLite (zero-config local) / PostgreSQL-ready via SQLAlchemy 2.0 ORM
 - **Security:** PBKDF2-HMAC-SHA256 password hashing, JWT Bearer tokens with query fallback, Role-Based Access Control (`clinician`, `patient`, `admin`)
 - **Document Processing:** PyMuPDF 2.0 (`pymupdf`), Tesseract OCR Adapter
-- **AI Intelligence:** Local Ollama (`llama3.2:3b`), OpenAI GPT-4o adapter, and deterministic clinical ontology engine with bounding-box coordinate mapping
+- **AI Intelligence:** Local Ollama (`llama3.2:3b`) **[Compulsory Core Requirement]** for private on-device antenatal clinical extraction, with secondary deterministic ontology fallback and coordinate bounding-box mapping
 
 ### Frontend
 - **Framework:** React 19 • TypeScript • Vite 8
@@ -132,15 +132,55 @@ Expectant mothers under acute psychosocial stress experience sympathetic nervous
 
 ## 🚀 Quickstart & Local Installation
 
-### Prerequisites
-- **Python:** 3.11+ (Python 3.14 fully supported)
-- **Node.js:** v18+ (Node 20+ recommended)
-- **Git**
-- *(Optional)* [Ollama](https://ollama.com/) with `llama3.2:3b` for local AI document extraction
+### Prerequisites & Compulsory Requirements
+
+> [!IMPORTANT]
+> **Ollama is COMPULSORY for PregTwin.**  
+> In maternal healthcare and medical informatics, patient privacy, ultrasound findings, and lab measurements must never be leaked to third-party public cloud APIs. PregTwin requires **Ollama** running locally on your workstation to perform private, zero-data-egress clinical entity extraction using `llama3.2:3b`.
+
+1. **Ollama:** [MANDATORY] Local AI engine running on `http://localhost:11434` with `llama3.2:3b`
+2. **Python:** 3.11+ (Python 3.14 fully supported)
+3. **Node.js:** v18+ (Node 20+ LTS recommended)
+4. **Git**
 
 ---
 
-### Step 1: Clone the Repository
+### Step 1: Install & Set Up Ollama (Compulsory)
+
+#### 1. Download & Install Ollama
+Download the official installer for your operating system:
+
+| Platform | Download Link | Quick Installation Command |
+| :--- | :--- | :--- |
+| **Windows** | [📥 Download Ollama for Windows](https://ollama.com/download/OllamaSetup.exe) | Run `OllamaSetup.exe` and follow setup prompt |
+| **macOS** | [📥 Download Ollama for Mac](https://ollama.com/download/Ollama-darwin.zip) | Unzip and drag `Ollama.app` to `/Applications` |
+| **Linux** | [📥 Install Script](https://ollama.com/download/linux) | `curl -fsSL https://ollama.com/install.sh \| sh` |
+
+Once installed, Ollama will automatically start as a local service listening on port `11434`.
+
+#### 2. Pull the Compulsory Clinical Model
+Open your terminal (PowerShell, Command Prompt, or Bash) and run:
+
+```bash
+ollama pull llama3.2:3b
+```
+*(Model download size is ~2.0 GB. Once pulled, it runs completely offline.)*
+
+#### 3. Verify Ollama is Running
+Ensure the model is loaded and the local API is responding:
+
+```bash
+# Check installed models:
+ollama list
+
+# Verify local REST endpoint is active:
+curl http://localhost:11434/api/tags
+```
+You should see `llama3.2:3b` listed in the output.
+
+---
+
+### Step 2: Clone the Repository
 ```bash
 git clone https://github.com/vatsalpro/health-twin.git
 cd health-twin
@@ -148,7 +188,7 @@ cd health-twin
 
 ---
 
-### Step 2: Backend Setup
+### Step 3: Backend Setup
 ```bash
 cd backend
 
@@ -162,6 +202,12 @@ source .venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
+# Configure environment (pre-configured for local Ollama)
+# Windows:
+copy .env.example .env
+# Linux/macOS:
+cp .env.example .env
+
 # Run database setup & synthetic demonstration data seeding
 python -m app.seed.seed_data
 
@@ -172,7 +218,7 @@ python -m uvicorn app.main:app --port 8008 --reload
 
 ---
 
-### Step 3: Frontend Setup
+### Step 4: Frontend Setup
 In a new terminal window:
 ```bash
 cd frontend
