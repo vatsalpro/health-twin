@@ -99,6 +99,54 @@ export const DocumentDetailView: React.FC = () => {
     }
   };
 
+  // Safe Keyboard Navigation for Clinicians
+  useEffect(() => {
+    if (!isClinician || !document || document.extracted_fields.length === 0) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input, textarea, or select
+      const activeEl = window.document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')
+      ) {
+        return;
+      }
+
+      const fields = document.extracted_fields;
+      const currentIndex = selectedField ? fields.findIndex((f) => f.id === selectedField.id) : 0;
+
+      if (e.key === 'ArrowDown' || e.key === 'j') {
+        e.preventDefault();
+        const nextIndex = (currentIndex + 1) % fields.length;
+        setSelectedField(fields[nextIndex]);
+        setCurrentPage(fields[nextIndex].source_page || 1);
+      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        e.preventDefault();
+        const prevIndex = (currentIndex - 1 + fields.length) % fields.length;
+        setSelectedField(fields[prevIndex]);
+        setCurrentPage(fields[prevIndex].source_page || 1);
+      } else if (e.key === 'ArrowLeft') {
+        setCurrentPage((p) => Math.max(1, p - 1));
+      } else if (e.key === 'ArrowRight') {
+        setCurrentPage((p) => Math.min(document.page_count, p + 1));
+      } else if ((e.key === 'a' || e.key === 'A') && selectedField) {
+        e.preventDefault();
+        handleReview(selectedField.id, 'ACCEPT');
+      } else if ((e.key === 'r' || e.key === 'R') && selectedField) {
+        e.preventDefault();
+        handleReview(selectedField.id, 'REJECT');
+      } else if ((e.key === 'e' || e.key === 'E') && selectedField) {
+        e.preventDefault();
+        setModifyingField(selectedField);
+        setCorrectionValue(selectedField.extracted_value);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isClinician, document, selectedField]);
+
   const handleAcceptAll = async () => {
     if (!documentId) return;
     setActionError(null);
@@ -503,6 +551,21 @@ export const DocumentDetailView: React.FC = () => {
                 </div>
               )}
             </CardContent>
+
+            {isClinician && (
+              <div className="p-2.5 px-4 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex items-center justify-between">
+                <span>Keyboard Shortcuts:</span>
+                <span className="font-mono text-slate-600 flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[10px] font-semibold text-slate-700 shadow-2xs">↑/↓</kbd> Select
+                  <span>•</span>
+                  <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[10px] font-semibold text-emerald-700 shadow-2xs">A</kbd> Accept
+                  <span>•</span>
+                  <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[10px] font-semibold text-rose-700 shadow-2xs">R</kbd> Reject
+                  <span>•</span>
+                  <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[10px] font-semibold text-amber-700 shadow-2xs">E</kbd> Edit
+                </span>
+              </div>
+            )}
           </Card>
         </div>
       </div>

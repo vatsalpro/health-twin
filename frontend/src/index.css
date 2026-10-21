@@ -40,7 +40,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Subtle, clean clinical grid background (light mode) */
+/* Subtle, clean clinical grid background */
 .grid-bg {
   background-color: var(--bg-primary);
   background-size: 32px 32px;
@@ -69,6 +69,20 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Accessible visible focus outlines */
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Form input focus styles */
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
 /* Clean, modern scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
@@ -88,10 +102,12 @@ body {
   background: #94A3B8;
 }
 
-/* Form input focus styles */
-input:focus, select:focus, textarea:focus {
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  border-color: var(--accent-primary) !important;
-  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+/* Reduced Motion Compliance */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

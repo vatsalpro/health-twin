@@ -25,8 +25,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; requireClinician?: b
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#070B14] flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-[#5BE7E8] border-t-transparent animate-spin" />
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-sky-600 border-t-transparent animate-spin" />
       </div>
     );
   }

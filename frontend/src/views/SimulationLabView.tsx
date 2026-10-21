@@ -730,6 +730,206 @@ export const SimulationLabView: React.FC = () => {
                 </div>
               )}
 
+              {/* Quick Scenario Templates */}
+              <div className="pb-3 border-b border-slate-100">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block mb-1.5">
+                  Scenario Templates
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeCategory === 'cardiovascular' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSbp(118);
+                          setDbp(76);
+                          setHeartRate(72);
+                          executeSimulation('cardiovascular', { sbp: 118, dbp: 76, heart_rate: 72 });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-sky-50 hover:text-sky-800 text-slate-700 rounded-lg border border-slate-200 transition-colors"
+                      >
+                        Normotensive (118/76)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSbp(142);
+                          setDbp(92);
+                          setHeartRate(82);
+                          executeSimulation('cardiovascular', { sbp: 142, dbp: 92, heart_rate: 82 });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 transition-colors font-medium"
+                      >
+                        Stage 1 HTN (142/92)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSbp(160);
+                          setDbp(105);
+                          setHeartRate(92);
+                          executeSimulation('cardiovascular', { sbp: 160, dbp: 105, heart_rate: 92 });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-900 rounded-lg border border-rose-200 transition-colors font-medium"
+                      >
+                        Severe HTN (160/105)
+                      </button>
+                    </>
+                  )}
+                  {activeCategory === 'preeclampsia_risk' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSbp(145);
+                          setDbp(94);
+                          setProteinDipstick('2+');
+                          setPlatelets(135);
+                          setAst(45);
+                          setAlt(40);
+                          setCreatinine(0.95);
+                          executeSimulation('preeclampsia_risk', {
+                            sbp: 145,
+                            dbp: 94,
+                            proteinuria_dipstick: '2+',
+                            platelets: 135,
+                            ast: 45,
+                            alt: 40,
+                            serum_creatinine: 0.95,
+                            gestational_age_weeks: ga,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 transition-colors font-medium"
+                      >
+                        Proteinuria Surge (2+)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSbp(152);
+                          setDbp(98);
+                          setProteinDipstick('2+');
+                          setPlatelets(85);
+                          setAst(85);
+                          setAlt(75);
+                          setCreatinine(1.15);
+                          executeSimulation('preeclampsia_risk', {
+                            sbp: 152,
+                            dbp: 98,
+                            proteinuria_dipstick: '2+',
+                            platelets: 85,
+                            ast: 85,
+                            alt: 75,
+                            serum_creatinine: 1.15,
+                            gestational_age_weeks: ga,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-900 rounded-lg border border-rose-200 transition-colors font-medium"
+                      >
+                        Low Platelets / HELLP
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSbp(118);
+                          setDbp(76);
+                          setProteinDipstick('Negative');
+                          setPlatelets(210);
+                          setAst(24);
+                          setAlt(20);
+                          setCreatinine(0.70);
+                          executeSimulation('preeclampsia_risk', {
+                            sbp: 118,
+                            dbp: 76,
+                            proteinuria_dipstick: 'Negative',
+                            platelets: 210,
+                            ast: 24,
+                            alt: 20,
+                            serum_creatinine: 0.70,
+                            gestational_age_weeks: ga,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-sky-50 text-slate-700 rounded-lg border border-slate-200 transition-colors"
+                      >
+                        Baseline Normal
+                      </button>
+                    </>
+                  )}
+                  {activeCategory === 'sensor_reliability' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMissingPacketRate(18);
+                          setNoiseSigma(5.5);
+                          setDelayMinutes(25);
+                          executeSimulation('sensor_reliability', {
+                            missing_packet_pct: 18,
+                            sensor_noise_sigma: 5.5,
+                            transmission_delay_min: 25,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 transition-colors font-medium"
+                      >
+                        Noisy Ambulatory Stream
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMissingPacketRate(0);
+                          setNoiseSigma(0.8);
+                          setDelayMinutes(0);
+                          executeSimulation('sensor_reliability', {
+                            missing_packet_pct: 0,
+                            sensor_noise_sigma: 0.8,
+                            transmission_delay_min: 0,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-sky-50 text-slate-700 rounded-lg border border-slate-200 transition-colors"
+                      >
+                        Calibrated Sensor
+                      </button>
+                    </>
+                  )}
+                  {activeCategory === 'metabolic_health' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFastingGlucose(108);
+                          setPostMealGlucose(165);
+                          executeSimulation('metabolic_health', {
+                            fasting_glucose: 108,
+                            post_meal_glucose: 165,
+                            unit: glucoseUnit,
+                            weight_kg: maternalWeight,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 transition-colors font-medium"
+                      >
+                        Impaired Glycemia / GDM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFastingGlucose(88);
+                          setPostMealGlucose(118);
+                          executeSimulation('metabolic_health', {
+                            fasting_glucose: 88,
+                            post_meal_glucose: 118,
+                            unit: glucoseUnit,
+                            weight_kg: maternalWeight,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-sky-50 text-slate-700 rounded-lg border border-slate-200 transition-colors"
+                      >
+                        Normal Homeostasis
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
               {/* MODULE A: Cardiovascular */}
               {activeCategory === 'cardiovascular' && (
                 <div className="space-y-4">
