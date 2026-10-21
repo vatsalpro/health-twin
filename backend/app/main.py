@@ -17,6 +17,9 @@ from app.api import (
     simulation,
     clinician,
     audit,
+    devices,
+    measurements,
+    camera_research,
 )
 
 @asynccontextmanager
@@ -55,6 +58,9 @@ app.include_router(observations.router, prefix=api_v1_prefix)
 app.include_router(twin.router, prefix=api_v1_prefix)
 app.include_router(predictions.router, prefix=api_v1_prefix)
 app.include_router(simulation.router, prefix=api_v1_prefix)
+app.include_router(devices.router, prefix=api_v1_prefix)
+app.include_router(measurements.router, prefix=api_v1_prefix)
+app.include_router(camera_research.router, prefix=api_v1_prefix)
 app.include_router(clinician.router, prefix=api_v1_prefix)
 app.include_router(audit.router, prefix=api_v1_prefix)
 

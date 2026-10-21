@@ -217,8 +217,92 @@ class SimulationResponse(BaseModel):
     simulated_risk_score: float
     simulated_risk_category: str
     delta_risk_score: float
-    feature_contributions: List[FeatureContribution]
-    model_version: str
+    feature_contributions: List[FeatureContribution] = []
+    model_version: str = "v1.4.2-longitudinal-preeclampsia"
+    category: Optional[str] = "preeclampsia_risk"
+    detailed_results: Optional[Dict[str, Any]] = None
+    uncertainty_interval: Optional[Dict[str, float]] = None
+
+class MultiCategorySimulationRequest(BaseModel):
+    category: str = Field("preeclampsia_risk", description="Simulation category: cardiovascular, preeclampsia_risk, gestational_timeline, metabolic_health, sleep_stress, sensor_reliability, monitoring_schedule, postpartum")
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="Parameters specific to category")
+    baseline_prediction_id: Optional[str] = None
+
+class ScenarioSaveRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+    category: str = Field("cardiovascular")
+    description: Optional[str] = None
+    parameters: Dict[str, Any]
+    results: Dict[str, Any]
+
+class ScenarioUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    results: Optional[Dict[str, Any]] = None
+
+class ScenarioResponse(BaseModel):
+    id: str
+    patient_id: str
+    name: str
+    category: str
+    description: Optional[str] = None
+    parameters: Dict[str, Any]
+    results: Dict[str, Any]
+    is_baseline: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+# --- IoT & Measurement Schemas ---
+class DeviceConnectionSchema(BaseModel):
+    id: str
+    patient_id: str
+    device_type: str
+    manufacturer: str
+    model_name: str
+    serial_number: Optional[str] = None
+    connection_protocol: str
+    connection_status: str
+    battery_percentage: Optional[int] = None
+    last_sync_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+    created_at: datetime
+
+class DeviceMeasurementCreateRequest(BaseModel):
+    measurement_type: str = Field(..., description="blood_pressure, pulse_oximetry, blood_glucose, wearable_vitals, temperature, weight, symptom_stress")
+    value_numeric: Optional[float] = None
+    value_secondary: Optional[float] = None
+    value_text: Optional[str] = None
+    unit: str
+    measurement_timestamp: Optional[str] = None
+    source_type: str = "manual"
+    device_manufacturer: Optional[str] = None
+    device_model: Optional[str] = None
+    context_data: Optional[Dict[str, Any]] = None
+    quality_status: str = "VALID"
+    confidence: float = 1.0
+    idempotency_key: Optional[str] = None
+
+class DeviceMeasurementSchema(BaseModel):
+    id: str
+    patient_id: str
+    device_connection_id: Optional[str] = None
+    measurement_type: str
+    value_numeric: Optional[float] = None
+    value_secondary: Optional[float] = None
+    value_text: Optional[str] = None
+    unit: str
+    measurement_timestamp: datetime
+    recording_timestamp: datetime
+    source_type: str
+    device_manufacturer: Optional[str] = None
+    device_model: Optional[str] = None
+    context_data: Optional[Dict[str, Any]] = None
+    quality_status: str
+    confidence: float
+    is_hypothetical: bool
+    is_reviewed: bool
+    created_at: datetime
 
 # --- Audit Event Schemas ---
 class AuditEventSchema(BaseModel):

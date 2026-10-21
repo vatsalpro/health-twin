@@ -2,19 +2,20 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api, TimelineEvent } from '../api/client';
 import {
-  Clock,
   FileText,
   Activity,
   TrendingUp,
-  AlertCircle,
   Calendar,
-  CheckCircle2,
   ChevronRight,
+  Filter,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { PageHeader } from '../components/ui/PageHeader';
 
 export const PregnancyTimelineView: React.FC = () => {
-  const { selectedPatient, selectedPatientId } = useAuth();
+  const { selectedPatientId } = useAuth();
   const navigate = useNavigate();
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -41,116 +42,128 @@ export const PregnancyTimelineView: React.FC = () => {
     return ev.type === filterType;
   });
 
+  const getEventBadge = (type: string) => {
+    switch (type) {
+      case 'DOCUMENT_UPLOAD':
+        return <Badge variant="primary">REPORT UPLOAD</Badge>;
+      case 'RISK_PREDICTION':
+        return <Badge variant="warning">RISK FORECAST</Badge>;
+      case 'CLINICAL_OBSERVATION':
+        return <Badge variant="success">OBSERVATION</Badge>;
+      default:
+        return <Badge variant="neutral">{type.replace('_', ' ')}</Badge>;
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 glass-panel rounded-2xl">
-        <div>
-          <span className="text-xs font-mono text-[#5BE7E8] uppercase tracking-wider block">
-            LONGITUDINAL PREGNANCY RECORD
-          </span>
-          <h2 className="text-2xl font-bold text-[#F4F7FC] mt-1">
-            Chronological Maternal Journey & History
-          </h2>
-          <p className="text-xs text-[#A5B3C8] mt-0.5">
-            Every clinical event, report upload, laboratory test, and model prediction in exact temporal order.
-          </p>
-        </div>
-
-        {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 p-1 bg-[#101A2B] rounded-xl border border-[rgba(166,190,220,0.18)]">
-          {['ALL', 'CLINICAL_OBSERVATION', 'DOCUMENT_UPLOAD', 'RISK_PREDICTION'].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilterType(f)}
-              className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-all ${
-                filterType === f
-                  ? 'bg-[#5BE7E8]/20 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC]'
-              }`}
-            >
-              {f === 'ALL'
-                ? 'All Events'
-                : f === 'CLINICAL_OBSERVATION'
-                ? 'Observations'
-                : f === 'DOCUMENT_UPLOAD'
-                ? 'Reports'
-                : 'Predictions'}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        badge="LONGITUDINAL PREGNANCY RECORD"
+        title="Chronological Maternal Journey & History"
+        description="Every clinical event, report upload, laboratory test, and model prediction in exact temporal order."
+        actions={
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200">
+            {['ALL', 'CLINICAL_OBSERVATION', 'DOCUMENT_UPLOAD', 'RISK_PREDICTION'].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilterType(f)}
+                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-all ${
+                  filterType === f
+                    ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {f === 'ALL'
+                  ? 'All Events'
+                  : f === 'CLINICAL_OBSERVATION'
+                  ? 'Observations'
+                  : f === 'DOCUMENT_UPLOAD'
+                  ? 'Reports'
+                  : 'Predictions'}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       {/* Timeline Stream */}
-      <div className="glass-panel p-6 rounded-2xl relative">
-        {/* Continuous technical spine */}
-        <div className="absolute left-10 top-12 bottom-12 w-0.5 bg-gradient-to-b from-[#5BE7E8]/40 via-[rgba(166,190,220,0.2)] to-transparent" />
+      <Card className="relative overflow-hidden">
+        <CardContent className="p-6">
+          {/* Continuous spine line */}
+          <div className="absolute left-10 top-10 bottom-10 w-0.5 bg-slate-200" />
 
-        <div className="space-y-6 relative">
-          {filteredEvents.length === 0 ? (
-            <div className="p-8 text-center text-xs text-[#A5B3C8]">No events recorded for this filter.</div>
-          ) : (
-            filteredEvents.map((ev, idx) => (
-              <div key={idx} className="flex items-start gap-6 group">
-                {/* Node Icon */}
-                <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 z-10 border shadow-lg transition-transform group-hover:scale-110 ${
-                    ev.type === 'DOCUMENT_UPLOAD'
-                      ? 'bg-[#101A2B] border-[#5BE7E8] text-[#5BE7E8]'
-                      : ev.type === 'RISK_PREDICTION'
-                      ? 'bg-[#142137] border-[#E9B96E] text-[#E9B96E]'
-                      : 'bg-[#0B1220] border-[#43D6B0] text-[#43D6B0]'
-                  }`}
-                >
-                  {ev.type === 'DOCUMENT_UPLOAD' ? (
-                    <FileText className="w-4 h-4" />
-                  ) : ev.type === 'RISK_PREDICTION' ? (
-                    <TrendingUp className="w-4 h-4" />
-                  ) : (
-                    <Activity className="w-4 h-4" />
-                  )}
-                </div>
-
-                {/* Event Content Card */}
-                <div
-                  onClick={() => {
-                    if (ev.type === 'DOCUMENT_UPLOAD') {
-                      navigate(`/medical-records/${ev.id}`);
-                    } else if (ev.type === 'RISK_PREDICTION') {
-                      navigate('/risk-forecast');
-                    } else {
-                      navigate('/observations');
-                    }
-                  }}
-                  className="flex-1 glass-panel-elevated p-4 rounded-xl cursor-pointer hover:border-[#5BE7E8]/40 transition-all"
-                >
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="font-mono text-[#A5B3C8] flex items-center gap-1.5 text-[11px]">
-                      <Calendar className="w-3.5 h-3.5 text-[#5BE7E8]" />
-                      {new Date(ev.timestamp).toLocaleDateString()} at{' '}
-                      {new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium ${
-                        ev.type === 'DOCUMENT_UPLOAD'
-                          ? 'bg-[#5BE7E8]/10 text-[#5BE7E8]'
-                          : ev.type === 'RISK_PREDICTION'
-                          ? 'bg-[#E9B96E]/15 text-[#E9B96E]'
-                          : 'bg-[#43D6B0]/10 text-[#43D6B0]'
-                      }`}
-                    >
-                      {ev.type.replace('_', ' ')}
-                    </span>
+          <div className="space-y-6 relative">
+            {loading ? (
+              <div className="p-12 text-center text-sm text-slate-500">Loading timeline events...</div>
+            ) : filteredEvents.length === 0 ? (
+              <div className="p-12 text-center text-sm text-slate-500">
+                No events recorded for the selected filter.
+              </div>
+            ) : (
+              filteredEvents.map((ev, idx) => (
+                <div key={idx} className="flex items-start gap-5 group">
+                  {/* Node Icon */}
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 border shadow-sm transition-transform group-hover:scale-105 ${
+                      ev.type === 'DOCUMENT_UPLOAD'
+                        ? 'bg-sky-50 border-sky-300 text-sky-700'
+                        : ev.type === 'RISK_PREDICTION'
+                        ? 'bg-amber-50 border-amber-300 text-amber-700'
+                        : 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                    }`}
+                  >
+                    {ev.type === 'DOCUMENT_UPLOAD' ? (
+                      <FileText className="w-4 h-4" />
+                    ) : ev.type === 'RISK_PREDICTION' ? (
+                      <TrendingUp className="w-4 h-4" />
+                    ) : (
+                      <Activity className="w-4 h-4" />
+                    )}
                   </div>
 
-                  <h4 className="text-sm font-bold text-[#F4F7FC]">{ev.title}</h4>
-                  <p className="text-xs text-[#A5B3C8] mt-1 leading-relaxed">{ev.description}</p>
+                  {/* Event Content Card */}
+                  <div
+                    onClick={() => {
+                      if (ev.type === 'DOCUMENT_UPLOAD') {
+                        navigate(`/medical-records/${ev.id}`);
+                      } else if (ev.type === 'RISK_PREDICTION') {
+                        navigate('/risk-forecast');
+                      } else {
+                        navigate('/observations');
+                      }
+                    }}
+                    className="flex-1 p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 hover:shadow-md cursor-pointer transition-all"
+                  >
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="font-mono text-slate-500 flex items-center gap-1.5 text-xs">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        {new Date(ev.timestamp).toLocaleDateString(undefined, {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                        })}{' '}
+                        at{' '}
+                        {new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      {getEventBadge(ev.type)}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 group-hover:text-sky-700 transition-colors">
+                          {ev.title}
+                        </h4>
+                        <p className="text-xs text-slate-600 mt-1 leading-relaxed">{ev.description}</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 transition-colors shrink-0" />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

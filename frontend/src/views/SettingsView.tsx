@@ -11,6 +11,10 @@ import {
   RefreshCw,
   Terminal,
 } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { PageHeader } from '../components/ui/PageHeader';
 
 export const SettingsView: React.FC = () => {
   const [diagnostics, setDiagnostics] = useState<SystemDiagnostics | null>(null);
@@ -34,152 +38,147 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 glass-panel rounded-2xl">
-        <div>
-          <span className="text-xs font-mono text-[#5BE7E8] uppercase tracking-wider block">
-            SYSTEM DIAGNOSTICS & PROVIDERS
-          </span>
-          <h2 className="text-2xl font-bold text-[#F4F7FC] mt-1">Platform Architecture & Configuration</h2>
-          <p className="text-xs text-[#A5B3C8] mt-0.5">
-            Transparent inspection of persistent storage, AI adapters, OCR engine status, and model parameters.
-          </p>
-        </div>
-
-        <button
-          onClick={loadDiagnostics}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#142137] hover:bg-[#192a45] text-xs font-medium text-[#5BE7E8] border border-[rgba(166,190,220,0.18)] transition-all"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Refresh Status</span>
-        </button>
-      </div>
+      <PageHeader
+        badge="SYSTEM DIAGNOSTICS & PROVIDERS"
+        title="Platform Architecture & Configuration"
+        description="Transparent inspection of persistent storage, AI adapters, OCR engine status, and model parameters."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadDiagnostics}
+            isLoading={loading}
+            icon={<RefreshCw className="w-3.5 h-3.5" />}
+          >
+            Refresh Status
+          </Button>
+        }
+      />
 
       {/* Services Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* AI Extraction Provider Status */}
-        <div className="glass-panel p-6 rounded-2xl space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#F4F7FC] flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-[#5BE7E8]" />
-              AI Extraction & Summary Provider
-            </h3>
-            <span
-              className={`px-2.5 py-0.5 rounded text-[10px] font-mono font-bold ${
-                !diagnostics?.ai_provider.fallback_active
-                  ? 'bg-[#43D6B0]/20 text-[#43D6B0]'
-                  : 'bg-[#E9B96E]/20 text-[#E9B96E]'
-              }`}
-            >
-              {!diagnostics?.ai_provider.fallback_active
-                ? (diagnostics?.ai_provider.configured_provider === 'ollama' ? 'OLLAMA ONLINE' : 'OPENAI ONLINE')
-                : 'FALLBACK ACTIVE'}
-            </span>
-          </div>
-
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
-              <span className="text-[#A5B3C8]">Configured Adapter:</span>
-              <span className="font-mono text-[#F4F7FC] font-semibold">
-                {diagnostics?.ai_provider.configured_provider === 'ollama'
-                  ? 'Local Ollama (Offline / On-Device)'
-                  : (diagnostics?.ai_provider.configured_provider || 'openai')}
-              </span>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-sky-600" />
+              <CardTitle className="text-sm">AI Extraction & Summary Provider</CardTitle>
             </div>
-
-            {diagnostics?.ai_provider.configured_provider === 'ollama' ? (
-              <>
-                <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
-                  <span className="text-[#A5B3C8]">Local Model:</span>
-                  <span className="font-mono text-[#5BE7E8] font-bold">
-                    {diagnostics?.ai_provider.ollama_model || 'llama3.2:3b'}
-                  </span>
-                </div>
-                <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
-                  <span className="text-[#A5B3C8]">Ollama Service API:</span>
-                  <span className="font-mono text-[#F4F7FC]">
-                    {diagnostics?.ai_provider.ollama_base_url || 'http://localhost:11434'} (
-                    {diagnostics?.ai_provider.ollama_reachable ? (
-                      <span className="text-[#43D6B0]">Reachable</span>
-                    ) : (
-                      <span className="text-[#F43F5E]">Offline</span>
-                    )}
-                    )
-                  </span>
-                </div>
-              </>
+            {!diagnostics?.ai_provider.fallback_active ? (
+              <Badge variant="success">
+                {diagnostics?.ai_provider.configured_provider === 'ollama' ? 'OLLAMA ONLINE' : 'OPENAI ONLINE'}
+              </Badge>
             ) : (
-              <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
-                <span className="text-[#A5B3C8]">OpenAI Key Configured:</span>
-                <span className="font-mono text-[#F4F7FC]">
-                  {diagnostics?.ai_provider.openai_api_key_set ? 'Yes (Stored in backend .env)' : 'No (Using local rules)'}
+              <Badge variant="warning">FALLBACK ACTIVE</Badge>
+            )}
+          </CardHeader>
+
+          <CardContent className="space-y-3">
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <span className="text-slate-500 font-medium">Configured Adapter:</span>
+                <span className="font-mono text-slate-900 font-semibold">
+                  {diagnostics?.ai_provider.configured_provider === 'ollama'
+                    ? 'Local Ollama (Offline / On-Device)'
+                    : (diagnostics?.ai_provider.configured_provider || 'openai')}
                 </span>
               </div>
-            )}
-          </div>
 
-          <p className="text-[11px] text-[#A5B3C8] leading-relaxed bg-[#101A2B] p-3 rounded-xl border border-[rgba(166,190,220,0.1)]">
-            {diagnostics?.ai_provider.notice}
-          </p>
-        </div>
+              {diagnostics?.ai_provider.configured_provider === 'ollama' ? (
+                <>
+                  <div className="flex justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                    <span className="text-slate-500 font-medium">Local Model:</span>
+                    <span className="font-mono text-sky-800 font-bold">
+                      {diagnostics?.ai_provider.ollama_model || 'llama3.2:3b'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                    <span className="text-slate-500 font-medium">Ollama Service API:</span>
+                    <span className="font-mono text-slate-900">
+                      {diagnostics?.ai_provider.ollama_base_url || 'http://localhost:11434'} (
+                      {diagnostics?.ai_provider.ollama_reachable ? (
+                        <span className="text-emerald-700 font-bold">Reachable</span>
+                      ) : (
+                        <span className="text-rose-600 font-bold">Offline</span>
+                      )}
+                      )
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                  <span className="text-slate-500 font-medium">OpenAI Key Configured:</span>
+                  <span className="font-mono text-slate-900">
+                    {diagnostics?.ai_provider.openai_api_key_set ? 'Yes (Stored in backend .env)' : 'No (Using local rules)'}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200">
+              {diagnostics?.ai_provider.notice}
+            </p>
+          </CardContent>
+        </Card>
 
         {/* OCR Engine Status */}
-        <div className="glass-panel p-6 rounded-2xl space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#F4F7FC] flex items-center gap-2">
-              <Eye className="w-4 h-4 text-[#43D6B0]" />
-              Optical Character Recognition (OCR)
-            </h3>
-            <span
-              className={`px-2.5 py-0.5 rounded text-[10px] font-mono font-bold ${
-                diagnostics?.ocr_engine.is_installed
-                  ? 'bg-[#43D6B0]/20 text-[#43D6B0]'
-                  : 'bg-[#5BE7E8]/20 text-[#5BE7E8]'
-              }`}
-            >
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div className="flex items-center gap-2">
+              <Eye className="w-4 h-4 text-emerald-600" />
+              <CardTitle className="text-sm">Optical Character Recognition (OCR)</CardTitle>
+            </div>
+            <Badge variant="primary">
               {diagnostics?.ocr_engine.is_installed ? 'TESSERACT FOUND' : 'PYMUPDF ACTIVE'}
-            </span>
-          </div>
+            </Badge>
+          </CardHeader>
 
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
-              <span className="text-[#A5B3C8]">OCR Engine:</span>
-              <span className="font-mono text-[#F4F7FC] font-semibold">
-                {diagnostics?.ocr_engine.configured_engine || 'tesseract'}
-              </span>
+          <CardContent className="space-y-3">
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <span className="text-slate-500 font-medium">OCR Engine:</span>
+                <span className="font-mono text-slate-900 font-semibold">
+                  {diagnostics?.ocr_engine.configured_engine || 'tesseract'}
+                </span>
+              </div>
+              <div className="flex justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <span className="text-slate-500 font-medium">Native PDF Text Extraction:</span>
+                <span className="font-mono text-emerald-700 font-semibold">PyMuPDF 2.0 (Active)</span>
+              </div>
             </div>
-            <div className="flex justify-between p-2.5 bg-[#0B1220]/70 rounded-lg">
-              <span className="text-[#A5B3C8]">Native PDF Text Extraction:</span>
-              <span className="font-mono text-[#43D6B0]">PyMuPDF 2.0 (Active)</span>
-            </div>
-          </div>
 
-          <p className="text-[11px] text-[#A5B3C8] leading-relaxed bg-[#101A2B] p-3 rounded-xl border border-[rgba(166,190,220,0.1)]">
-            {diagnostics?.ocr_engine.notice}
-          </p>
-        </div>
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200">
+              {diagnostics?.ocr_engine.notice}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Environment Setup Instructions */}
-      <div className="glass-panel p-6 rounded-2xl space-y-3">
-        <h3 className="text-sm font-bold text-[#F4F7FC] flex items-center gap-2">
-          <Terminal className="w-4 h-4 text-[#5BE7E8]" />
-          Backend Environment Configuration (`backend/.env`)
-        </h3>
-        <p className="text-xs text-[#A5B3C8]">
-          To activate live OpenAI GPT-4o report extraction, populate your API key in `backend/.env` and restart the backend service:
-        </p>
-        <pre className="p-4 bg-[#070B14] rounded-xl border border-[rgba(166,190,220,0.14)] text-xs font-mono text-[#5BE7E8] overflow-x-auto">
-{`# AI Provider Configuration
-AI_PROVIDER=openai
-OPENAI_API_KEY=sk-...your-openai-api-key...
-OPENAI_MODEL=gpt-4o
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Terminal className="w-4 h-4 text-slate-700" />
+            <CardTitle className="text-sm">Backend Environment Configuration (`backend/.env`)</CardTitle>
+          </div>
+          <CardDescription>
+            Configuration parameters supported by the PregTwin Python FastAPI backend.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed">
+{`# AI Provider Configuration (Ollama / Local LLM)
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2:3b
+OLLAMA_TIMEOUT_SECONDS=30.0
 
 # Optional Local OCR Engine (Windows/Linux)
 OCR_ENGINE=tesseract
 TESSERACT_CMD=C:\\Program Files\\Tesseract-OCR\\tesseract.exe`}
-        </pre>
-      </div>
+          </pre>
+        </CardContent>
+      </Card>
     </div>
   );
 };

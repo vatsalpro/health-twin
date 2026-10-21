@@ -1,23 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { api, RiskPrediction, FeatureContribution } from '../api/client';
+import { api, RiskPrediction } from '../api/client';
 import {
-  TrendingUp,
   AlertTriangle,
-  ShieldCheck,
   Info,
-  Calendar,
   Clock,
-  Sparkles,
-  BarChart2,
   RefreshCw,
-  Layers,
-  CheckCircle2,
   AlertCircle,
+  Activity,
+  Award,
 } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Alert } from '../components/ui/Alert';
 
 export const RiskForecastView: React.FC = () => {
-  const { selectedPatient, selectedPatientId } = useAuth();
+  const { selectedPatientId } = useAuth();
   const [predictions, setPredictions] = useState<RiskPrediction[]>([]);
   const [currentPrediction, setCurrentPrediction] = useState<RiskPrediction | null>(null);
   const [evaluationMetrics, setEvaluationMetrics] = useState<any>(null);
@@ -63,337 +63,346 @@ export const RiskForecastView: React.FC = () => {
     }
   };
 
+  const getRiskBadge = (cat?: string) => {
+    switch (cat) {
+      case 'HIGH':
+        return <Badge variant="danger" size="md">HIGH RISK</Badge>;
+      case 'MODERATE':
+        return <Badge variant="warning" size="md">MODERATE RISK</Badge>;
+      case 'LOW':
+        return <Badge variant="success" size="md">LOW RISK</Badge>;
+      case 'INSUFFICIENT_DATA':
+        return <Badge variant="neutral" size="md">INSUFFICIENT DATA</Badge>;
+      default:
+        return <Badge variant="neutral" size="md">EVALUATING</Badge>;
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 glass-panel rounded-2xl">
-        <div>
-          <span className="text-xs font-mono text-[#5BE7E8] uppercase tracking-wider block">
-            RESEARCH PREDICTION ENGINE
-          </span>
-          <h2 className="text-2xl font-bold text-[#F4F7FC] mt-1">14-Day Preeclampsia Risk Forecast</h2>
-          <p className="text-xs text-[#A5B3C8] mt-0.5">
-            Calibrated multivariable longitudinal research model predicting onset of clinician-confirmed preeclampsia.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 p-1 bg-[#101A2B] rounded-xl border border-[rgba(166,190,220,0.18)]">
-            <button
-              onClick={() => setActiveTab('FORECAST')}
-              className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-all ${
-                activeTab === 'FORECAST'
-                  ? 'bg-[#5BE7E8]/20 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC]'
-              }`}
-            >
-              Patient Forecast
-            </button>
-            <button
-              onClick={() => setActiveTab('SCIENCE')}
-              className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-all ${
-                activeTab === 'SCIENCE'
-                  ? 'bg-[#5BE7E8]/20 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC]'
-              }`}
-            >
-              Model Evaluation & Science
-            </button>
-          </div>
-
-          <button
-            onClick={handleRecompute}
-            disabled={recomputing}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#142137] hover:bg-[#192a45] text-[#5BE7E8] text-xs font-medium border border-[#5BE7E8]/30 transition-all"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${recomputing ? 'animate-spin' : ''}`} />
-            <span>Recompute</span>
-          </button>
-        </div>
-      </div>
-
-      {activeTab === 'FORECAST' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Main Risk Quantification Card */}
-          <div className="lg:col-span-7 glass-panel-elevated p-6 rounded-2xl space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-[#A5B3C8]">
-                  Target Clinical Outcome
-                </span>
-                <h3 className="text-lg font-bold text-[#F4F7FC]">
-                  Clinician-Confirmed Preeclampsia within 14 Days
-                </h3>
-              </div>
-              <span
-                className={`px-3 py-1 rounded-full text-xs font-bold font-mono uppercase ${
-                  currentPrediction?.risk_category === 'HIGH'
-                    ? 'bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/40'
-                    : currentPrediction?.risk_category === 'MODERATE'
-                    ? 'bg-[#E9B96E]/20 text-[#E9B96E] border border-[#E9B96E]/40'
-                    : currentPrediction?.risk_category === 'INSUFFICIENT_DATA'
-                    ? 'bg-[#A5B3C8]/20 text-[#A5B3C8]'
-                    : 'bg-[#43D6B0]/20 text-[#43D6B0] border border-[#43D6B0]/40'
+      <PageHeader
+        badge="RESEARCH PREDICTION ENGINE"
+        title="14-Day Preeclampsia Risk Forecast"
+        description="Calibrated multivariable longitudinal research model predicting onset of clinician-confirmed preeclampsia."
+        actions={
+          <div className="flex items-center gap-3">
+            <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200">
+              <button
+                onClick={() => setActiveTab('FORECAST')}
+                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-all ${
+                  activeTab === 'FORECAST'
+                    ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {currentPrediction?.risk_category || 'LOW RISK'}
-              </span>
+                Patient Forecast
+              </button>
+              <button
+                onClick={() => setActiveTab('SCIENCE')}
+                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-all ${
+                  activeTab === 'SCIENCE'
+                    ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Model Science & Provenance
+              </button>
             </div>
 
-            {currentPrediction?.is_insufficient_data ? (
-              <div className="p-6 bg-[#E9B96E]/10 rounded-xl border border-[#E9B96E]/30 space-y-2">
-                <div className="flex items-center gap-2 text-[#E9B96E] font-semibold text-sm">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>Model Inactive: Insufficient Clinical Data</span>
-                </div>
-                <p className="text-xs text-[#F4F7FC] leading-relaxed">
-                  {currentPrediction.insufficient_data_reason}
-                </p>
-                <p className="text-[11px] text-[#A5B3C8]">
-                  Gestational age is under the 20.0-week clinical eligibility window or baseline blood pressure observations have not been recorded.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-baseline justify-between p-4 bg-[#0B1220]/80 rounded-xl border border-[rgba(166,190,220,0.12)]">
-                  <div>
-                    <span className="text-4xl font-extrabold font-mono text-[#F4F7FC]">
-                      {currentPrediction?.risk_score !== undefined
-                        ? `${(currentPrediction.risk_score * 100).toFixed(1)}%`
-                        : 'N/A'}
-                    </span>
-                    <span className="text-xs text-[#A5B3C8] block mt-0.5">
-                      Calibrated Probability (Platt Scaling)
-                    </span>
-                  </div>
-                  <div className="text-right text-xs font-mono text-[#A5B3C8]">
-                    <span>95% Confidence Interval:</span>
-                    <p className="text-sm font-bold text-[#5BE7E8] mt-0.5">
-                      [
-                      {currentPrediction?.confidence_interval_lower
-                        ? (currentPrediction.confidence_interval_lower * 100).toFixed(1)
-                        : 0}
-                      % —{' '}
-                      {currentPrediction?.confidence_interval_upper
-                        ? (currentPrediction.confidence_interval_upper * 100).toFixed(1)
-                        : 0}
-                      %]
-                    </p>
-                  </div>
-                </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRecompute}
+              disabled={recomputing}
+              isLoading={recomputing}
+              icon={<RefreshCw className="w-3.5 h-3.5" />}
+            >
+              Recompute
+            </Button>
+          </div>
+        }
+      />
 
-                {/* Contributing Features Waterfall */}
-                <div className="space-y-3 pt-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider font-mono text-[#5BE7E8]">
-                    Evidence & Feature Contributions (Log-Odds Impact)
-                  </h4>
-                  <div className="space-y-2">
-                    {currentPrediction?.feature_contributions.map((feat, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3 bg-[#0B1220]/60 rounded-xl border border-[rgba(166,190,220,0.08)] flex items-center justify-between text-xs"
-                      >
-                        <div>
-                          <span className="font-semibold text-[#F4F7FC]">{feat.feature_label}</span>
-                          <span className="text-[10px] text-[#A5B3C8] block font-mono">
-                            Variable: {feat.feature_name}
+      {loading && !predictions.length ? (
+        <div className="p-12 text-center text-slate-400">Loading risk predictions...</div>
+      ) : activeTab === 'FORECAST' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Main Risk Quantification Card */}
+          <div className="lg:col-span-7 space-y-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-4">
+                <div>
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    Target Clinical Outcome
+                  </span>
+                  <CardTitle className="text-lg">Clinician-Confirmed Preeclampsia within 14 Days</CardTitle>
+                </div>
+                <div>{getRiskBadge(currentPrediction?.risk_category)}</div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {currentPrediction?.is_insufficient_data ? (
+                  <Alert
+                    variant="warning"
+                    title="Model Inactive: Insufficient Clinical Data"
+                    description={
+                      <div>
+                        <p>{currentPrediction.insufficient_data_reason}</p>
+                        <p className="mt-1 text-slate-600">
+                          Gestational age is under the 20.0-week clinical eligibility window or baseline blood pressure observations have not been recorded.
+                        </p>
+                      </div>
+                    }
+                  />
+                ) : (
+                  <div className="space-y-5">
+                    {/* Primary score card */}
+                    <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl flex items-baseline justify-between">
+                      <div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-4xl font-extrabold text-slate-900 font-mono tracking-tight">
+                            {currentPrediction?.risk_score !== undefined
+                              ? `${(currentPrediction.risk_score * 100).toFixed(1)}%`
+                              : 'N/A'}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-500">
+                            calibrated risk
                           </span>
                         </div>
-                        <div className="text-right">
-                          <span
-                            className={`font-mono font-bold ${
-                              feat.direction === 'increases_risk'
-                                ? 'text-[#F43F5E]'
-                                : feat.direction === 'decreases_risk'
-                                ? 'text-[#43D6B0]'
-                                : 'text-[#A5B3C8]'
-                            }`}
-                          >
-                            {feat.contribution > 0 ? `+${feat.contribution}` : feat.contribution}
+                        <span className="text-xs text-slate-500 block mt-1">
+                          Platt-scaled empirical probability
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-medium text-slate-500 block">95% Confidence Interval</span>
+                        <span className="text-base font-bold text-sky-700 font-mono">
+                          [
+                          {currentPrediction?.confidence_interval_lower
+                            ? (currentPrediction.confidence_interval_lower * 100).toFixed(1)
+                            : 0}
+                          % —{' '}
+                          {currentPrediction?.confidence_interval_upper
+                            ? (currentPrediction.confidence_interval_upper * 100).toFixed(1)
+                            : 0}
+                          %]
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Contributing Features Waterfall */}
+                    <div className="space-y-3 pt-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Biomarker Contributions (Log-Odds Impact)
+                        </h4>
+                        <span className="text-xs text-slate-500 font-mono">Additive Shapley Log-Odds</span>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {currentPrediction?.feature_contributions && currentPrediction.feature_contributions.length > 0 ? (
+                          currentPrediction.feature_contributions.map((feat, idx) => (
+                            <div
+                              key={idx}
+                              className="p-3 bg-white rounded-lg border border-slate-200 flex items-center justify-between hover:border-slate-300 transition-colors"
+                            >
+                              <div>
+                                <span className="font-semibold text-sm text-slate-900">{feat.feature_label}</span>
+                                <span className="text-xs text-slate-500 block font-mono">
+                                  Variable: {feat.feature_name}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <span
+                                  className={`font-mono font-bold text-sm ${
+                                    feat.direction === 'increases_risk'
+                                      ? 'text-rose-600'
+                                      : feat.direction === 'decreases_risk'
+                                      ? 'text-emerald-600'
+                                      : 'text-slate-600'
+                                  }`}
+                                >
+                                  {feat.contribution > 0 ? `+${feat.contribution}` : feat.contribution}
+                                </span>
+                                <span className="text-[11px] text-slate-500 block capitalize">
+                                  {feat.direction.replace('_', ' ')}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-lg">
+                            No individual feature contribution breakdown available for this score.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Model Limitations Notice */}
+                <Alert
+                  variant="info"
+                  title="Clinical Interpretation Notice"
+                  description={
+                    currentPrediction?.model_limitations ||
+                    'Research model intended strictly to support clinical review. Not an autonomous diagnostic device.'
+                  }
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Historical Prediction Trajectory */}
+          <div className="lg:col-span-5 space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-sky-600" />
+                  <CardTitle className="text-base">Historical Replay Trajectory ({predictions.length})</CardTitle>
+                </div>
+                <CardDescription>
+                  Previous forecasts reconstructing evidence available at that timestamp (zero temporal leakage).
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
+                  {predictions.map((p) => {
+                    const isSelected = currentPrediction?.id === p.id;
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => setCurrentPrediction(p)}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                          isSelected
+                            ? 'border-sky-500 bg-sky-50/60 shadow-sm'
+                            : 'border-slate-200 bg-white hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-mono font-medium text-slate-500">
+                            {new Date(p.prediction_timestamp).toLocaleDateString()}
                           </span>
-                          <span className="text-[10px] text-[#A5B3C8] block capitalize">
-                            {feat.direction.replace('_', ' ')}
+                          {getRiskBadge(p.risk_category)}
+                        </div>
+
+                        <div className="flex items-baseline justify-between mt-2 pt-2 border-t border-slate-100">
+                          <span className="text-xs text-slate-700">
+                            Gestational Age: <strong className="text-slate-900">{p.gestational_age_weeks}w</strong>
+                          </span>
+                          <span className="text-sm font-bold font-mono text-sky-700">
+                            {p.risk_score !== undefined ? `${(p.risk_score * 100).toFixed(1)}%` : 'N/A'}
                           </span>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              </div>
-            )}
-
-            {/* Model Limitations Notice */}
-            <div className="p-4 bg-[#101A2B]/80 rounded-xl border border-[rgba(166,190,220,0.14)] text-xs space-y-1.5">
-              <div className="flex items-center gap-2 text-[#E9B96E] font-semibold">
-                <Info className="w-4 h-4" />
-                <span>Clinical Interpretation Disclaimer</span>
-              </div>
-              <p className="text-[#A5B3C8] leading-relaxed text-[11px]">
-                {currentPrediction?.model_limitations ||
-                  'Research model intended strictly to support clinical review. Not an autonomous diagnostic device.'}
-              </p>
-            </div>
-          </div>
-
-          {/* Historical Prediction Trajectory & Replay */}
-          <div className="lg:col-span-5 glass-panel p-6 rounded-2xl space-y-4">
-            <h3 className="text-base font-bold text-[#F4F7FC] flex items-center gap-2">
-              <Clock className="w-4 h-4 text-[#5BE7E8]" />
-              Historical Replay Trajectory ({predictions.length})
-            </h3>
-            <p className="text-xs text-[#A5B3C8]">
-              Inspect previous forecasts reconstructing only evidence available at that timestamp (zero leakage).
-            </p>
-
-            <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
-              {predictions.map((p) => (
-                <div
-                  key={p.id}
-                  onClick={() => setCurrentPrediction(p)}
-                  className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                    currentPrediction?.id === p.id
-                      ? 'border-[#5BE7E8] bg-[#142137] shadow-lg shadow-[#5BE7E8]/5'
-                      : 'border-[rgba(166,190,220,0.1)] bg-[#0B1220]/60 hover:bg-[#101A2B]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-[#A5B3C8]">
-                      {new Date(p.prediction_timestamp).toLocaleDateString()}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                        p.risk_category === 'HIGH'
-                          ? 'bg-[#F43F5E]/20 text-[#F43F5E]'
-                          : p.risk_category === 'MODERATE'
-                          ? 'bg-[#E9B96E]/20 text-[#E9B96E]'
-                          : p.risk_category === 'INSUFFICIENT_DATA'
-                          ? 'bg-[#A5B3C8]/20 text-[#A5B3C8]'
-                          : 'bg-[#43D6B0]/20 text-[#43D6B0]'
-                      }`}
-                    >
-                      {p.risk_category}
-                    </span>
-                  </div>
-
-                  <div className="flex items-baseline justify-between mt-2">
-                    <span className="text-xs text-[#F4F7FC]">
-                      Gestational Age: <strong>{p.gestational_age_weeks}w</strong>
-                    </span>
-                    <span className="text-sm font-bold font-mono text-[#5BE7E8]">
-                      {p.risk_score !== undefined ? `${(p.risk_score * 100).toFixed(1)}%` : 'N/A'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       ) : (
         /* Tab 2: Model Evaluation & Provenance */
-        <div className="glass-panel p-6 rounded-2xl space-y-6">
-          <div className="flex items-center justify-between border-b border-[rgba(166,190,220,0.1)] pb-4">
-            <div>
-              <h3 className="text-lg font-bold text-[#F4F7FC]">
-                Model Registry & Evaluation Provenance ({evaluationMetrics?.model_version || 'v1.4.2'})
-              </h3>
-              <p className="text-xs text-[#A5B3C8] mt-0.5">
-                Research preeclampsia risk engine parameterized from clinical obstetric risk factors.
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">
+                  Model Registry & Evaluation Provenance ({evaluationMetrics?.model_version || 'v1.4.2'})
+                </CardTitle>
+                <CardDescription>
+                  Research preeclampsia risk engine parameterized from clinical obstetric risk factors.
+                </CardDescription>
+              </div>
+              <Badge variant="neutral">Horizon: 14 Days</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {!evaluationMetrics?.metrics_available ? (
+              <Alert
+                variant="warning"
+                title="Model Performance Validation Pending External Clinical Cohort"
+                description={
+                  <div className="space-y-4">
+                    <p>
+                      {evaluationMetrics?.message ||
+                        'Model performance has not yet been evaluated on an external longitudinal clinical validation cohort.'}
+                    </p>
+
+                    {evaluationMetrics?.validation_requirements && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                        <div className="p-3 bg-white rounded-lg border border-amber-200">
+                          <span className="text-[10px] font-mono uppercase text-amber-800 font-bold block">Cohort Criteria</span>
+                          <span className="text-xs text-slate-800 mt-1 block">
+                            {evaluationMetrics.validation_requirements.cohort_criteria}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-white rounded-lg border border-amber-200">
+                          <span className="text-[10px] font-mono uppercase text-amber-800 font-bold block">Sample Threshold</span>
+                          <span className="text-xs text-slate-800 mt-1 block">
+                            {evaluationMetrics.validation_requirements.minimum_sample_size}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-white rounded-lg border border-amber-200">
+                          <span className="text-[10px] font-mono uppercase text-amber-800 font-bold block">Validation Protocol</span>
+                          <span className="text-xs text-slate-800 mt-1 block">
+                            {evaluationMetrics.validation_requirements.protocol}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                }
+              />
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                  <span className="text-xs text-slate-500 uppercase font-mono font-medium">AUROC</span>
+                  <p className="text-3xl font-bold font-mono text-slate-900 mt-1">
+                    {evaluationMetrics.metrics?.auroc?.toFixed(3)}
+                  </p>
+                  <span className="text-xs text-emerald-600 font-medium mt-0.5 block">Discrimination</span>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                  <span className="text-xs text-slate-500 uppercase font-mono font-medium">AUPRC</span>
+                  <p className="text-3xl font-bold font-mono text-slate-900 mt-1">
+                    {evaluationMetrics.metrics?.auprc?.toFixed(3)}
+                  </p>
+                  <span className="text-xs text-emerald-600 font-medium mt-0.5 block">Precision-Recall</span>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                  <span className="text-xs text-slate-500 uppercase font-mono font-medium">Sensitivity</span>
+                  <p className="text-3xl font-bold font-mono text-slate-900 mt-1">
+                    {evaluationMetrics.metrics?.sensitivity_at_operating_point
+                      ? `${(evaluationMetrics.metrics.sensitivity_at_operating_point * 100).toFixed(1)}%`
+                      : 'N/A'}
+                  </p>
+                  <span className="text-xs text-slate-500 font-medium mt-0.5 block">At operating threshold</span>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                  <span className="text-xs text-slate-500 uppercase font-mono font-medium">Specificity</span>
+                  <p className="text-3xl font-bold font-mono text-slate-900 mt-1">
+                    {evaluationMetrics.metrics?.specificity_at_operating_point
+                      ? `${(evaluationMetrics.metrics.specificity_at_operating_point * 100).toFixed(1)}%`
+                      : 'N/A'}
+                  </p>
+                  <span className="text-xs text-slate-500 font-medium mt-0.5 block">At operating threshold</span>
+                </div>
+              </div>
+            )}
+
+            {/* Provenance Statement */}
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+              <span className="font-bold text-slate-900 block font-mono text-xs">DATASET PROVENANCE & LEAKAGE CONTROL</span>
+              <p className="text-slate-600 leading-relaxed text-xs">
+                {evaluationMetrics?.provenance_statement ||
+                  'Features are strictly bounded at the index prediction timestamp to eliminate hindsight bias and temporal leakage.'}
               </p>
             </div>
-            <span className="px-3 py-1 rounded-full text-xs font-mono bg-[#E9B96E]/10 text-[#E9B96E] border border-[#E9B96E]/30">
-              Horizon: 14 Days
-            </span>
-          </div>
-
-          {!evaluationMetrics?.metrics_available ? (
-            /* Honest Not-Evaluated State Banner */
-            <div className="p-6 bg-[#0B1220] rounded-2xl border border-[rgba(166,190,220,0.15)] space-y-4">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-[#E9B96E] shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-[#F4F7FC]">
-                    Model Performance Validation Pending External Clinical Cohort
-                  </h4>
-                  <p className="text-xs text-[#A5B3C8] leading-relaxed">
-                    {evaluationMetrics?.message ||
-                      'Model performance has not yet been evaluated on an external longitudinal clinical validation cohort.'}
-                  </p>
-                </div>
-              </div>
-
-              {evaluationMetrics?.validation_requirements && (
-                <div className="mt-4 pt-4 border-t border-[rgba(166,190,220,0.1)] grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="p-3 bg-[#101A2B] rounded-xl border border-[rgba(166,190,220,0.08)]">
-                    <span className="text-[10px] font-mono uppercase text-[#5BE7E8] block">Cohort Criteria</span>
-                    <span className="text-xs text-[#F4F7FC] mt-1 block">
-                      {evaluationMetrics.validation_requirements.cohort_criteria}
-                    </span>
-                  </div>
-                  <div className="p-3 bg-[#101A2B] rounded-xl border border-[rgba(166,190,220,0.08)]">
-                    <span className="text-[10px] font-mono uppercase text-[#5BE7E8] block">Sample Threshold</span>
-                    <span className="text-xs text-[#F4F7FC] mt-1 block">
-                      {evaluationMetrics.validation_requirements.minimum_sample_size}
-                    </span>
-                  </div>
-                  <div className="p-3 bg-[#101A2B] rounded-xl border border-[rgba(166,190,220,0.08)]">
-                    <span className="text-[10px] font-mono uppercase text-[#5BE7E8] block">Validation Protocol</span>
-                    <span className="text-xs text-[#F4F7FC] mt-1 block">
-                      {evaluationMetrics.validation_requirements.protocol}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* Metric Cards when real evaluation is available */
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
-                <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">AUROC</span>
-                <p className="text-2xl font-bold font-mono text-[#5BE7E8] mt-1">
-                  {evaluationMetrics.metrics?.auroc?.toFixed(3)}
-                </p>
-                <span className="text-[10px] text-[#43D6B0]">Discrimination</span>
-              </div>
-
-              <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
-                <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">AUPRC</span>
-                <p className="text-2xl font-bold font-mono text-[#5BE7E8] mt-1">
-                  {evaluationMetrics.metrics?.auprc?.toFixed(3)}
-                </p>
-                <span className="text-[10px] text-[#43D6B0]">Precision-Recall</span>
-              </div>
-
-              <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
-                <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">Sensitivity</span>
-                <p className="text-2xl font-bold font-mono text-[#F4F7FC] mt-1">
-                  {evaluationMetrics.metrics?.sensitivity_at_operating_point
-                    ? `${(evaluationMetrics.metrics.sensitivity_at_operating_point * 100).toFixed(1)}%`
-                    : 'N/A'}
-                </p>
-                <span className="text-[10px] text-[#A5B3C8]">At operating threshold</span>
-              </div>
-
-              <div className="p-4 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.1)] text-center">
-                <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">Specificity</span>
-                <p className="text-2xl font-bold font-mono text-[#F4F7FC] mt-1">
-                  {evaluationMetrics.metrics?.specificity_at_operating_point
-                    ? `${(evaluationMetrics.metrics.specificity_at_operating_point * 100).toFixed(1)}%`
-                    : 'N/A'}
-                </p>
-                <span className="text-[10px] text-[#A5B3C8]">At operating threshold</span>
-              </div>
-            </div>
-          )}
-
-          {/* Provenance Statement */}
-          <div className="p-4 bg-[#0B1220]/80 rounded-xl border border-[rgba(166,190,220,0.12)] text-xs space-y-1">
-            <span className="font-bold text-[#5BE7E8] block font-mono text-[11px]">DATASET PROVENANCE & LEAKAGE CONTROL</span>
-            <p className="text-[#A5B3C8] leading-relaxed text-[11px]">
-              {evaluationMetrics?.provenance_statement ||
-                'Features are strictly bounded at the index prediction timestamp to eliminate hindsight bias and temporal leakage.'}
-            </p>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

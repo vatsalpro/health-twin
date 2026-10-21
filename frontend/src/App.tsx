@@ -11,6 +11,8 @@ import { DocumentDetailView } from './views/DocumentDetailView';
 import { ObservationsView } from './views/ObservationsView';
 import { RiskForecastView } from './views/RiskForecastView';
 import { SimulationLabView } from './views/SimulationLabView';
+import { DevicesAndMeasurementsView } from './views/DevicesAndMeasurementsView';
+import { CameraSignalResearchView } from './views/CameraSignalResearchView';
 import { ClinicianReviewQueueView } from './views/ClinicianReviewQueueView';
 import { AuditHistoryView } from './views/AuditHistoryView';
 import { SettingsView } from './views/SettingsView';
@@ -62,8 +64,11 @@ export const App: React.FC = () => {
             <Route path="medical-records" element={<MedicalRecordsView />} />
             <Route path="medical-records/:documentId" element={<DocumentDetailView />} />
             <Route path="observations" element={<ObservationsView />} />
+            <Route path="measurements-devices" element={<DevicesAndMeasurementsView />} />
+            <Route path="camera-research" element={<CameraSignalResearchView />} />
             <Route path="risk-forecast" element={<RiskForecastView />} />
             <Route path="simulation-lab" element={<SimulationLabView />} />
+            <Route path="simulation" element={<Navigate to="/simulation-lab" replace />} />
 
             {/* Clinician Workspace */}
             <Route

@@ -20,10 +20,14 @@ venv/
 backend/storage/documents/*
 !backend/storage/documents/.gitkeep
 
-# Database
+# Database & Local State
 *.db
 *.sqlite3
 backend/pregtwin.db
+*.bak
+*.bak*
+*.audit.bak
+storage/
 
 # Node / Frontend
 node_modules/

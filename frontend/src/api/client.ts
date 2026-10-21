@@ -177,6 +177,92 @@ export interface SimulationResult {
   delta_risk_score: number;
   feature_contributions: FeatureContribution[];
   model_version: string;
+  category?: string;
+  detailed_results?: Record<string, any>;
+  uncertainty_interval?: { lower: number; upper: number };
+}
+
+export interface SimulationScenario {
+  id: string;
+  patient_id: string;
+  name: string;
+  category: string;
+  description?: string;
+  parameters: Record<string, any>;
+  results: Record<string, any>;
+  is_baseline: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeviceConnection {
+  id: string;
+  patient_id: string;
+  device_type: string;
+  manufacturer: string;
+  model_name: string;
+  serial_number?: string;
+  connection_protocol: string;
+  connection_status: 'connected' | 'disconnected' | 'syncing' | 'error';
+  battery_percentage?: number;
+  last_sync_at?: string;
+  error_message?: string;
+  created_at: string;
+}
+
+export interface DeviceMeasurement {
+  id: string;
+  patient_id: string;
+  device_connection_id?: string;
+  measurement_type: string;
+  value_numeric?: number;
+  value_secondary?: number;
+  value_text?: string;
+  unit: string;
+  measurement_timestamp: string;
+  recording_timestamp: string;
+  source_type: string;
+  device_manufacturer?: string;
+  device_model?: string;
+  context_data?: Record<string, any>;
+  quality_status: string;
+  confidence: number;
+  is_hypothetical: boolean;
+  is_reviewed: boolean;
+  created_at: string;
+}
+
+export interface CameraResearchStatus {
+  module: string;
+  protocol_version: string;
+  is_diagnostic_device: boolean;
+  identity_recognition_performed: boolean;
+  raw_video_storage_policy: string;
+  principles: Record<string, string>;
+  disclaimer: string;
+}
+
+export interface CameraResearchSessionRecord {
+  id: string;
+  patient_id: string;
+  session_timestamp: string;
+  duration_seconds: number;
+  lighting_condition: string;
+  motion_stability: string;
+  signal_quality_score: number;
+  face_tracking_ratio?: number;
+  estimated_pulse_bpm?: number;
+  hrv_rmssd_ms?: number;
+  hrv_status?: string;
+  rppg_algorithm?: string;
+  rppg_snr_db?: number;
+  facial_indicators?: Record<string, any>;
+  stress_pipeline_status?: string;
+  stress_feature_vector?: Record<string, any>;
+  user_reported_stress?: number;
+  user_notes?: string;
+  consent_confirmed: boolean;
+  created_at: string;
 }
 
 export interface TimelineEvent {
@@ -230,6 +316,25 @@ class ApiClient {
     return headers;
   }
 
+  private async fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 60000): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      return response;
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        throw new Error(`Request timed out after ${timeoutMs / 1000} seconds. Local AI inference or processing is taking longer than expected.`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async handleResponse<T>(res: Response): Promise<T> {
     if (!res.ok) {
       let errorMsg = `HTTP Error ${res.status}: ${res.statusText}`;
@@ -248,74 +353,75 @@ class ApiClient {
 
   // Auth
   async login(formData: { email: string; password: string }): Promise<AuthResponse> {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await this.fetchWithTimeout(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData),
-    });
+    }, 30000);
     return this.handleResponse<AuthResponse>(res);
   }
 
   async getMe(): Promise<User> {
-    const res = await fetch(`${API_BASE}/auth/me`, {
+    const res = await this.fetchWithTimeout(`${API_BASE}/auth/me`, {
       headers: this.getHeaders(),
-    });
+    }, 30000);
     return this.handleResponse<User>(res);
   }
 
   // Patients
   async listPatients(): Promise<PatientProfile[]> {
-    const res = await fetch(`${API_BASE}/patients`, {
+    const res = await this.fetchWithTimeout(`${API_BASE}/patients`, {
       headers: this.getHeaders(),
-    });
+    }, 30000);
     return this.handleResponse<PatientProfile[]>(res);
   }
 
   async getPatient(id: string): Promise<PatientProfile> {
-    const res = await fetch(`${API_BASE}/patients/${id}`, {
+    const res = await this.fetchWithTimeout(`${API_BASE}/patients/${id}`, {
       headers: this.getHeaders(),
-    });
+    }, 30000);
     return this.handleResponse<PatientProfile>(res);
   }
 
   async getPatientTimeline(id: string): Promise<{ patient_id: string; patient_name: string; mrn: string; events: TimelineEvent[] }> {
-    const res = await fetch(`${API_BASE}/patients/${id}/timeline`, {
+    const res = await this.fetchWithTimeout(`${API_BASE}/patients/${id}/timeline`, {
       headers: this.getHeaders(),
-    });
+    }, 30000);
     return this.handleResponse<{ patient_id: string; patient_name: string; mrn: string; events: TimelineEvent[] }>(res);
   }
 
   // Documents
   async uploadDocument(formData: FormData): Promise<MedicalDocument> {
-    const res = await fetch(`${API_BASE}/documents/upload`, {
+    // 3 minutes timeout for local Ollama / PyMuPDF OCR on multi-page reports
+    const res = await this.fetchWithTimeout(`${API_BASE}/documents/upload`, {
       method: 'POST',
       headers: this.getHeaders(true),
       body: formData,
-    });
+    }, 180000);
     return this.handleResponse<MedicalDocument>(res);
   }
 
   async getDocument(id: string): Promise<MedicalDocument> {
-    const res = await fetch(`${API_BASE}/documents/${id}`, {
+    const res = await this.fetchWithTimeout(`${API_BASE}/documents/${id}`, {
       headers: this.getHeaders(),
-    });
+    }, 30000);
     return this.handleResponse<MedicalDocument>(res);
   }
 
   async reviewField(docId: string, fieldId: string, decision: string, correction?: string, notes?: string): Promise<any> {
-    const res = await fetch(`${API_BASE}/documents/${docId}/fields/${fieldId}/review`, {
+    const res = await this.fetchWithTimeout(`${API_BASE}/documents/${docId}/fields/${fieldId}/review`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({ decision, correction_value: correction, clinician_notes: notes }),
-    });
+    }, 30000);
     return this.handleResponse<any>(res);
   }
 
   async acceptAllFields(docId: string): Promise<any> {
-    const res = await fetch(`${API_BASE}/documents/${docId}/accept-all`, {
+    const res = await this.fetchWithTimeout(`${API_BASE}/documents/${docId}/accept-all`, {
       method: 'POST',
       headers: this.getHeaders(),
-    });
+    }, 60000);
     return this.handleResponse<any>(res);
   }
 
@@ -383,7 +489,7 @@ class ApiClient {
     return this.handleResponse<any>(res);
   }
 
-  // Simulation Lab
+  // Simulation Lab & Scenarios
   async simulateScenario(patientId: string, payload: any): Promise<SimulationResult> {
     const res = await fetch(`${API_BASE}/patients/${patientId}/simulate`, {
       method: 'POST',
@@ -391,6 +497,178 @@ class ApiClient {
       body: JSON.stringify(payload),
     });
     return this.handleResponse<SimulationResult>(res);
+  }
+
+  async getScenarios(patientId: string, category?: string): Promise<SimulationScenario[]> {
+    const url = category ? `${API_BASE}/patients/${patientId}/scenarios?category=${category}` : `${API_BASE}/patients/${patientId}/scenarios`;
+    const res = await fetch(url, { headers: this.getHeaders() });
+    return this.handleResponse<SimulationScenario[]>(res);
+  }
+
+  async saveScenario(patientId: string, data: { name: string; category: string; description?: string; parameters: any; results: any }): Promise<SimulationScenario> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/scenarios`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse<SimulationScenario>(res);
+  }
+
+  async getScenario(patientId: string, scenarioId: string): Promise<SimulationScenario> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/scenarios/${scenarioId}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<SimulationScenario>(res);
+  }
+
+  async updateScenario(patientId: string, scenarioId: string, data: any): Promise<SimulationScenario> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/scenarios/${scenarioId}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse<SimulationScenario>(res);
+  }
+
+  async deleteScenario(patientId: string, scenarioId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/scenarios/${scenarioId}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<any>(res);
+  }
+
+  exportScenarioUrl(patientId: string, scenarioId: string, format = 'csv'): string {
+    const token = localStorage.getItem('pregtwin_token');
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+    return `${API_BASE}/patients/${patientId}/scenarios/${scenarioId}/export?format=${format}${tokenParam}`;
+  }
+
+  async downloadScenarioExport(patientId: string, scenarioId: string, format = 'csv'): Promise<void> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/scenarios/${scenarioId}/export?format=${format}`, {
+      headers: this.getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Export failed with status ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `scenario_${scenarioId}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }
+
+  async downloadDocument(documentId: string, filename = 'document.pdf'): Promise<void> {
+    const res = await fetch(`${API_BASE}/documents/${documentId}/download`, {
+      headers: this.getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Download failed with status ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }
+
+  // IoT Devices & Multi-Sensor
+  async getDevices(patientId: string): Promise<DeviceConnection[]> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/devices`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<DeviceConnection[]>(res);
+  }
+
+  async connectMockDevice(patientId: string, deviceId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/devices/mock/connect?device_id=${encodeURIComponent(deviceId)}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<any>(res);
+  }
+
+  async disconnectMockDevice(patientId: string, deviceId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/devices/mock/disconnect?device_id=${encodeURIComponent(deviceId)}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<any>(res);
+  }
+
+  async generateMockReadings(patientId: string, deviceId: string, count = 1): Promise<any> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/devices/mock/generate?device_id=${encodeURIComponent(deviceId)}&reading_count=${count}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<any>(res);
+  }
+
+  async getDeviceSpecs(patientId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/devices/specs`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<any>(res);
+  }
+
+  // Normalized Measurements
+  async getMeasurements(
+    patientId: string,
+    params?: { measurement_type?: string; source_type?: string; limit?: number; offset?: number }
+  ): Promise<DeviceMeasurement[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.measurement_type) searchParams.append('measurement_type', params.measurement_type);
+    if (params?.source_type) searchParams.append('source_type', params.source_type);
+    if (params?.limit) searchParams.append('limit', String(params.limit));
+    if (params?.offset) searchParams.append('offset', String(params.offset));
+
+    const qs = searchParams.toString();
+    const url = qs ? `${API_BASE}/patients/${patientId}/measurements?${qs}` : `${API_BASE}/patients/${patientId}/measurements`;
+    const res = await fetch(url, { headers: this.getHeaders() });
+    return this.handleResponse<DeviceMeasurement[]>(res);
+  }
+
+  async createMeasurement(patientId: string, data: any): Promise<DeviceMeasurement> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/measurements`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse<DeviceMeasurement>(res);
+  }
+
+  // Camera Signal Research
+  async getCameraResearchStatus(patientId: string): Promise<CameraResearchStatus> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/camera-research/status`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<CameraResearchStatus>(res);
+  }
+
+  async logCameraSignal(patientId: string, data: any): Promise<any> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/camera-research/signals`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse<any>(res);
+  }
+
+  async getCameraResearchSessions(patientId: string, limit = 20): Promise<CameraResearchSessionRecord[]> {
+    const res = await fetch(`${API_BASE}/patients/${patientId}/camera-research/sessions?limit=${limit}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<CameraResearchSessionRecord[]>(res);
   }
 
   // Clinician Workspace

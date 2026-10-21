@@ -2,6 +2,7 @@ import re
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple, Union
 import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -274,8 +275,13 @@ class AIExtractor:
             "sgpt": "alt",
             "creatinine": "serum_creatinine",
             "fasting_blood_glucose": "fasting_glucose",
+            "fasting_plasma_glucose": "fasting_glucose",
             "fasting_glucose": "fasting_glucose",
             "fbg": "fasting_glucose",
+            "fbs": "fasting_glucose",
+            "fasting_blood_sugar": "fasting_glucose",
+            "fasting_sugar": "fasting_glucose",
+            "historical_fasting_glucose": "historical_fasting_glucose",
             "glucose_tolerance_test": "ogtt_glucose",
             "ogtt": "ogtt_glucose",
             "glucose_screen": "ogtt_glucose",
@@ -321,13 +327,22 @@ class AIExtractor:
             validation_status = "VALID" if num < 90 else ("ALERT_SEVERE_RANGE" if num >= 110 else "ALERT_ELEVATED")
 
         elif std_name == "gestational_age_weeks":
-            # Support decimal weeks or 'X weeks Y days'
             ga_dec = None
-            complex_ga = re.search(r"([1-4]?\d)\s*(?:weeks?|w)\s*(?:([0-6])\s*(?:days?|d))?", val_str, re.IGNORECASE)
-            if complex_ga:
+            clean_val = val_str.strip()
+            # Check for 'X weeks Y days', 'X weeks + Y days', 'Xw Yd'
+            complex_ga = re.search(r"([0-9]{1,2})\s*(?:weeks?|w)\s*(?:(?:\+|and|,)?\s*([0-6])\s*(?:days?|d))?", clean_val, re.IGNORECASE)
+            plus_ga = re.search(r"([0-9]{1,2})\s*\+\s*([0-6])", clean_val)
+
+            if complex_ga and complex_ga.group(2):
                 w = int(complex_ga.group(1))
-                d = int(complex_ga.group(2)) if complex_ga.group(2) else 0
+                d = int(complex_ga.group(2))
                 ga_dec = round(w + (d / 7.0), 1)
+            elif plus_ga:
+                w = int(plus_ga.group(1))
+                d = int(plus_ga.group(2))
+                ga_dec = round(w + (d / 7.0), 1)
+            elif complex_ga and complex_ga.group(1) and ("week" in clean_val.lower() or "w" in clean_val.lower()):
+                ga_dec = round(float(complex_ga.group(1)), 1)
             elif num is not None:
                 ga_dec = round(num, 1)
 
@@ -364,7 +379,10 @@ class AIExtractor:
             if num is None or num < 20 or num > 600:
                 return None
             val_str = str(int(num))
-            validation_status = "VALID" if num < 140 else "ALERT_ELEVATED_GLUCOSE"
+            if std_name == "historical_fasting_glucose":
+                validation_status = "HISTORICAL_RECORD"
+            else:
+                validation_status = "VALID" if num < 95 else "ALERT_ELEVATED_GLUCOSE"
 
         elif std_name == "protein_creatinine_ratio":
             if num is None or num < 0.01 or num > 20.0:
@@ -545,9 +563,16 @@ Prior Maternal Context: {prior_summary or 'No prior records available for this p
         fields: List[Dict[str, Any]] = []
         doc_category = "Antenatal visit summary"
 
+        # Context-aware document section segmentation
+        sections = self._parse_document_sections(text)
+        current_sections_text = "\n".join(text[s:e] for s, e, t in sections if t != "HISTORICAL")
+        current_section = current_sections_text if current_sections_text.strip() else text
+
         # Regex patterns for clinical measurements
         # 1. Blood Pressure: e.g. "142/92", "BP: 130 / 84 mmHg", "Blood Pressure 150/98"
-        bp_matches = list(re.finditer(r"(?:BP|Blood\s*Pressure)?[:\s]*([12]?\d{2})\s*/\s*([6-9]\d|1[0-2]\d)\s*(?:mmHg)?", text, re.IGNORECASE))
+        bp_matches = list(re.finditer(r"(?:BP|Blood\s*Pressure)?[:\s]*([12]?\d{2})\s*/\s*([6-9]\d|1[0-2]\d)\s*(?:mmHg)?", current_section, re.IGNORECASE))
+        if not bp_matches:
+            bp_matches = list(re.finditer(r"(?:BP|Blood\s*Pressure)?[:\s]*([12]?\d{2})\s*/\s*([6-9]\d|1[0-2]\d)\s*(?:mmHg)?", text, re.IGNORECASE))
         if bp_matches:
             for match in bp_matches[:2]:
                 sbp_val = match.group(1)
@@ -584,13 +609,45 @@ Prior Maternal Context: {prior_summary or 'No prior records available for this p
                 })
                 break
 
-        # 2. Gestational Age: e.g. "28w4d", "32 weeks 1 day", "Gestational Age: 29.3 weeks"
-        ga_match = re.search(r"(?:Gestational\s*Age|GA|Gestation)[:\s]*([1-4]?\d)(?:w|(?:\s*weeks?))\s*(?:([0-6])d|days)?", text, re.IGNORECASE)
+        # 2. Gestational Age: e.g. "Gestational age at visit\n30 weeks + 2 days", "30w + 2d", "30 weeks and 2 days", "28w4d", "29.3 weeks"
+        ga_match = re.search(
+            r"(?:Gestational\s*Age(?:\s*at\s*visit)?|GA(?:\s*at\s*visit)?|Gestation(?:\s*at\s*visit)?|EGA)[\s:]*"
+            r"([1-4]?\d)\s*(?:weeks?|w)\s*(?:(?:\+|and|,)?\s*([0-6])\s*(?:days?|d)?)?",
+            current_section,
+            re.IGNORECASE
+        )
+        if not ga_match:
+            ga_match = re.search(
+                r"(?:Gestational\s*Age(?:\s*at\s*visit)?|GA(?:\s*at\s*visit)?|Gestation(?:\s*at\s*visit)?|EGA)[\s:]*"
+                r"([1-4]?\d)\s*\+\s*([0-6])\s*(?:weeks?|w)?",
+                current_section,
+                re.IGNORECASE
+            )
+        if not ga_match:
+            ga_match = re.search(
+                r"(?:Gestational\s*Age(?:\s*at\s*visit)?|GA(?:\s*at\s*visit)?|Gestation(?:\s*at\s*visit)?|EGA)[\s:]*"
+                r"([1-4]?\d(?:\.[0-6])?)\s*(?:weeks?|w)?",
+                current_section,
+                re.IGNORECASE
+            )
+        if not ga_match:
+            ga_match = re.search(
+                r"(?:Gestational\s*Age(?:\s*at\s*visit)?|GA(?:\s*at\s*visit)?|Gestation(?:\s*at\s*visit)?|EGA)[\s:]*"
+                r"([1-4]?\d)\s*(?:weeks?|w)\s*(?:(?:\+|and|,)?\s*([0-6])\s*(?:days?|d)?)?",
+                text,
+                re.IGNORECASE
+            )
+
         if ga_match:
-            weeks = int(ga_match.group(1))
-            days = int(ga_match.group(2)) if ga_match.group(2) else 0
-            decimal_ga = round(weeks + (days / 7.0), 1)
             matched_snippet = ga_match.group(0).strip()
+            if len(ga_match.groups()) >= 2 and ga_match.group(2):
+                weeks = int(ga_match.group(1))
+                days = int(ga_match.group(2))
+                decimal_ga = round(weeks + (days / 7.0), 1)
+            else:
+                raw_val = float(ga_match.group(1))
+                decimal_ga = round(raw_val, 1)
+
             page_no, bbox = self._find_snippet_location(matched_snippet, pages_data)
             fields.append({
                 "field_name": "gestational_age_weeks",
@@ -605,27 +662,40 @@ Prior Maternal Context: {prior_summary or 'No prior records available for this p
                 "validation_status": "VALID"
             })
 
-        # 3. Proteinuria: e.g. "Urine Protein: 2+", "Protein: 1+", "Dipstick: Trace", "Proteinuria: negative", "UPCR: 0.42"
-        upcr_match = re.search(r"(?:UPCR|Protein-to-Creatinine|Protein/Creatinine\s*Ratio)[:\s]*([0-9]+(?:\.[0-9]+)?)\s*(?:mg/mg)?", text, re.IGNORECASE)
+        # 3. Proteinuria & UPCR: e.g. "Urine protein-to-creatinine ratio\n0.34\nmg/mg", "UPCR: 0.42", "Protein/creatinine ratio: 0.35"
+        upcr_match = re.search(
+            r"(?:Urine\s*protein[-/ ]to[-/ ]creatinine\s*ratio|UPCR|Protein[-/ ]to[-/ ]creatinine(?:\s*ratio)?|Protein/creatinine\s*ratio)[\s:]*([0-9]+(?:\.[0-9]+)?)\s*(mg/mg|mg/g)?",
+            current_section,
+            re.IGNORECASE
+        )
+        if not upcr_match:
+            upcr_match = re.search(
+                r"(?:Urine\s*protein[-/ ]to[-/ ]creatinine\s*ratio|UPCR|Protein[-/ ]to[-/ ]creatinine(?:\s*ratio)?|Protein/creatinine\s*ratio)[\s:]*([0-9]+(?:\.[0-9]+)?)\s*(mg/mg|mg/g)?",
+                text,
+                re.IGNORECASE
+            )
         if upcr_match:
             val = upcr_match.group(1)
+            unit = upcr_match.group(2) or "mg/mg"
             matched_snippet = upcr_match.group(0).strip()
             page_no, bbox = self._find_snippet_location(matched_snippet, pages_data)
             fields.append({
                 "field_name": "protein_creatinine_ratio",
                 "category": "urine_protein",
                 "extracted_value": val,
-                "unit": "mg/mg",
+                "unit": unit,
                 "source_text": matched_snippet,
                 "source_page": page_no,
                 "bounding_box": bbox,
-                "confidence": 0.95,
+                "confidence": 0.96,
                 "extraction_method": "deterministic_regex",
                 "validation_status": "VALID" if float(val) < 0.3 else "ALERT_ELEVATED"
             })
             doc_category = "Urinalysis and urine-protein assessment"
 
-        protein_dipstick_match = re.search(r"(?:Urine\s*Protein|Proteinuria|Dipstick\s*Protein)[:\s]*(negative|nil|trace|1\+|2\+|3\+|4\+|\+)", text, re.IGNORECASE)
+        protein_dipstick_match = re.search(r"(?:Urine\s*Protein(?:\s*Dipstick)?|Proteinuria|Dipstick\s*Protein)[\s:]*(negative|nil|trace|1\+|2\+|3\+|4\+|\+)", current_section, re.IGNORECASE)
+        if not protein_dipstick_match:
+            protein_dipstick_match = re.search(r"(?:Urine\s*Protein(?:\s*Dipstick)?|Proteinuria|Dipstick\s*Protein)[\s:]*(negative|nil|trace|1\+|2\+|3\+|4\+|\+)", text, re.IGNORECASE)
         if protein_dipstick_match:
             val = protein_dipstick_match.group(1).upper()
             matched_snippet = protein_dipstick_match.group(0).strip()
@@ -723,23 +793,9 @@ Prior Maternal Context: {prior_summary or 'No prior records available for this p
                 doc_category = "Kidney-function tests"
 
         # 7. Blood Glucose & OGTT
-        fbg_match = re.search(r"(?:Fasting\s*(?:Blood\s*)?Glucose|FBG)[:\s]*([0-9]{2,3})\s*(?:mg/dL)?", text, re.IGNORECASE)
-        if fbg_match:
-            val = float(fbg_match.group(1))
-            matched_snippet = fbg_match.group(0).strip()
-            page_no, bbox = self._find_snippet_location(matched_snippet, pages_data)
-            fields.append({
-                "field_name": "fasting_glucose",
-                "category": "glucose_metabolism",
-                "extracted_value": str(int(val)),
-                "unit": "mg/dL",
-                "source_text": matched_snippet,
-                "source_page": page_no,
-                "bounding_box": bbox,
-                "confidence": 0.95,
-                "extraction_method": "deterministic_regex",
-                "validation_status": "VALID" if val < 95 else "ALERT_ELEVATED_FASTING_GLUCOSE"
-            })
+        # Context-aware extraction of Fasting Glucose & preservation of historical records
+        glucose_fields = self._extract_and_resolve_glucose(text, pages_data, sections)
+        fields.extend(glucose_fields)
 
         ogtt_match = re.search(r"(?:1-Hour\s*(?:50g\s*)?Glucose(?:\s*Screen)?|OGTT(?:\s*1-?Hour)?|Glucose\s*Screen)[:\s]*([0-9]{2,3})\s*(?:mg/dL)?", text, re.IGNORECASE)
         if ogtt_match:
@@ -761,14 +817,291 @@ Prior Maternal Context: {prior_summary or 'No prior records available for this p
 
         return fields, doc_category
 
+    @classmethod
+    def _parse_clinical_date(cls, date_str: str) -> Optional[datetime]:
+        """Safely parses a clinical date or timestamp into a UTC datetime object."""
+        if not date_str:
+            return None
+        s = date_str.strip()
+        formats = [
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%d",
+            "%d-%m-%Y %H:%M",
+            "%d-%m-%Y",
+            "%d/%m/%Y %H:%M",
+            "%d/%m/%Y",
+            "%d %B %Y",
+            "%d %b %Y",
+        ]
+        s_clean = re.sub(r"\s+[A-Z]{2,4}$", "", s).strip()
+        for fmt in formats:
+            try:
+                return datetime.strptime(s_clean, fmt)
+            except ValueError:
+                continue
+        m = re.search(r"\b(20\d{2}[-/][01]\d[-/][0-3]\d)\b", s)
+        if m:
+            try:
+                return datetime.strptime(m.group(1).replace("/", "-"), "%Y-%m-%d")
+            except ValueError:
+                pass
+        return None
+
+    @classmethod
+    def _parse_document_sections(cls, text: str) -> List[Tuple[int, int, str]]:
+        """
+        Segments clinical text into contiguous semantic section intervals [start, end, section_type].
+        Eliminates reading-order assumptions by explicitly recognizing section header boundaries.
+        """
+        section_markers = [
+            ("HISTORICAL", re.compile(r"(?:^|\n)\s*(?:(?:4\.|Section\s*4|[4-9]\.|\bSection\s*[4-9]\b)\s*)?(?:Historical|Prior|Previous|Past)\s+(?:observations|antenatal\s*visit|records|history|lab\s*results?|readings?)[:\s]*", re.IGNORECASE)),
+            ("CURRENT_LABS", re.compile(r"(?:^|\n)\s*(?:(?:3\.|Section\s*3|[1-3]\.|\bSection\s*[1-3]\b)\s*)?(?:Laboratory\s*results?|Laboratory\s*flowsheet|Flowsheet|Recent\s*laboratory|Current\s*laboratory|Lab\s*investigations?|Blood\s*chemistry)[:\s]*", re.IGNORECASE)),
+            ("CURRENT_VITALS", re.compile(r"(?:^|\n)\s*(?:(?:2\.|Section\s*2|[1-2]\.|\bSection\s*[1-2]\b)\s*)?(?:Vital\s*observations?|Current\s*vitals?|Vital\s*signs?|Clinical\s*findings?|Examination)[:\s]*", re.IGNORECASE)),
+            ("CURRENT_VISIT", re.compile(r"(?:^|\n)\s*(?:(?:1\.|Section\s*1)\s*)?(?:Patient\s*and\s*pregnancy\s*details|Current\s*(?:antenatal\s*)?visit|Visit\s*details?|Today(?:'s)?\s*visit)[:\s]*", re.IGNORECASE)),
+            ("NARRATIVE", re.compile(r"(?:^|\n)\s*(?:(?:5\.|Section\s*5|[5-9]\.|\bSection\s*[5-9]\b)\s*)?(?:Narrative\s*notes?|Clinical\s*notes?|Impression|Plan|Assessment)[:\s]*", re.IGNORECASE)),
+        ]
+        intervals = []
+        for sec_type, pat in section_markers:
+            for m in pat.finditer(text):
+                intervals.append((m.start(), sec_type))
+
+        intervals.sort(key=lambda x: x[0])
+
+        sections = []
+        if not intervals or intervals[0][0] > 0:
+            first_start = intervals[0][0] if intervals else len(text)
+            sections.append((0, first_start, "CURRENT_VISIT"))
+
+        for i in range(len(intervals)):
+            start_pos, sec_type = intervals[i]
+            end_pos = intervals[i + 1][0] if (i + 1 < len(intervals)) else len(text)
+            sections.append((start_pos, end_pos, sec_type))
+
+        return sections
+
+    def _extract_and_resolve_glucose(
+        self,
+        text: str,
+        pages_data: List[Dict[str, Any]],
+        sections: List[Tuple[int, int, str]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Context-aware glucose extraction:
+        - Resolves primary current Fasting Glucose without reading-order assumptions.
+        - Preserves historical records as 'historical_fasting_glucose'.
+        - Flags conflicting ambiguous current values for clinician review instead of guessing.
+        """
+        extracted: List[Dict[str, Any]] = []
+
+        # Detect Document-level Report Date
+        doc_date = None
+        doc_date_dt = None
+        rep_match = re.search(
+            r"(?:Report\s*(?:issue\s*)?date|Visit\s*date(?:\s*/\s*time)?|Collection\s*date|Date\s*of\s*visit)[\s:]*([0-9]{4}[-/][0-9]{2}[-/][0-9]{2}(?:\s+[0-9]{2}:[0-9]{2}(?::[0-9]{2})?)?)",
+            text,
+            re.IGNORECASE
+        )
+        if rep_match:
+            doc_date = rep_match.group(1).strip()
+            doc_date_dt = self._parse_clinical_date(doc_date)
+
+        def get_section_info_at(pos: int) -> Tuple[int, int, str]:
+            for s_start, s_end, s_type in sections:
+                if s_start <= pos < s_end:
+                    return s_start, s_end, s_type
+            return 0, len(text), "CURRENT_VISIT"
+
+        glucose_pattern = re.compile(
+            r"(?P<prefix>Fasting\s*(?:plasma\s*|blood\s*)?(?:glucose|sugar)|FBG|FBS)(?:[^\n0-9]{0,40}\n)*[\s:=]*(?P<val>[0-9]{2,3})\s*(?P<unit>mg/d[lL]|mmol/[lL])?",
+            re.IGNORECASE
+        )
+
+        candidates = []
+        for m in glucose_pattern.finditer(text):
+            val = int(m.group("val"))
+            unit = m.group("unit") or "mg/dL"
+            start_idx = m.start()
+            end_idx = m.end()
+            snippet = m.group(0).strip()
+
+            sec_start, sec_end, sec_type = get_section_info_at(start_idx)
+            ctx_start = max(sec_start, start_idx - 60)
+            ctx_end = min(sec_end, end_idx + 80)
+            context_window = text[ctx_start:ctx_end]
+
+            line_start = text.rfind("\n", sec_start, start_idx)
+            line_start = line_start + 1 if line_start != -1 else sec_start
+            line_end = text.find("\n", end_idx)
+            line_end = min(sec_end, line_end) if line_end != -1 else sec_end
+            line_context = text[line_start:line_end].replace("\n", " ").strip()
+
+            has_prior_kw = bool(re.search(r"\b(?:prior|historical|previous|earlier|baseline|past)\b", context_window, re.IGNORECASE))
+            has_current_kw = bool(re.search(r"\b(?:current|today|recent|present|this\s*visit)\b", context_window, re.IGNORECASE))
+
+            meas_date_str = None
+            meas_dt = None
+            ts_match = re.search(r"\b(20\d{2}[-/][01]\d[-/][0-3]\d(?:\s+[0-2]\d:[0-5]\d(?::[0-5]\d)?)?(?:\s+[A-Z]{2,4})?)\b", context_window)
+            if ts_match:
+                meas_date_str = ts_match.group(1).strip()
+                meas_dt = self._parse_clinical_date(meas_date_str)
+            else:
+                wk_match = re.search(r"\bWeek\s*(\d{1,2})\b", context_window, re.IGNORECASE)
+                if wk_match:
+                    meas_date_str = f"Week {wk_match.group(1)}"
+
+            is_historical = False
+            if sec_type == "HISTORICAL":
+                is_historical = True
+            elif has_prior_kw and not has_current_kw:
+                is_historical = True
+            elif meas_dt and doc_date_dt and (doc_date_dt - meas_dt).days >= 1:
+                is_historical = True
+            elif meas_date_str and "Week" in meas_date_str:
+                ga_match = re.search(r"(?:Gestational\s*age|GA)[\s:]*(\d{1,2})", text, re.IGNORECASE)
+                if ga_match:
+                    doc_ga = int(ga_match.group(1))
+                    cand_ga = int(re.search(r"\d+", meas_date_str).group(0))
+                    if cand_ga < doc_ga:
+                        is_historical = True
+
+            candidates.append({
+                "value": str(val),
+                "unit": unit,
+                "snippet": snippet,
+                "line_context": line_context,
+                "timestamp_str": meas_date_str,
+                "timestamp_dt": meas_dt,
+                "section_type": sec_type,
+                "is_historical": is_historical,
+                "has_current_kw": has_current_kw,
+                "start_idx": start_idx
+            })
+
+        if not candidates:
+            return extracted
+
+        current_cands = [c for c in candidates if not c["is_historical"]]
+        historical_cands = [c for c in candidates if c["is_historical"]]
+
+        # 1. Resolve current fasting_glucose
+        if len(current_cands) == 1:
+            chosen = current_cands[0]
+            page_no, bbox = self._find_snippet_location(chosen["snippet"], pages_data)
+            extracted.append({
+                "field_name": "fasting_glucose",
+                "category": "glucose_metabolism",
+                "extracted_value": chosen["value"],
+                "unit": chosen["unit"],
+                "source_text": chosen["snippet"] + (f" ({chosen['timestamp_str']})" if chosen["timestamp_str"] else ""),
+                "source_page": page_no,
+                "bounding_box": bbox,
+                "confidence": 0.96,
+                "extraction_method": "deterministic_regex",
+                "validation_status": "VALID" if int(chosen["value"]) < 95 else "ALERT_ELEVATED_FASTING_GLUCOSE"
+            })
+        elif len(current_cands) > 1:
+            unique_vals = set(c["value"] for c in current_cands)
+            if len(unique_vals) == 1:
+                chosen = current_cands[0]
+                page_no, bbox = self._find_snippet_location(chosen["snippet"], pages_data)
+                extracted.append({
+                    "field_name": "fasting_glucose",
+                    "category": "glucose_metabolism",
+                    "extracted_value": chosen["value"],
+                    "unit": chosen["unit"],
+                    "source_text": chosen["snippet"],
+                    "source_page": page_no,
+                    "bounding_box": bbox,
+                    "confidence": 0.96,
+                    "extraction_method": "deterministic_regex",
+                    "validation_status": "VALID" if int(chosen["value"]) < 95 else "ALERT_ELEVATED_FASTING_GLUCOSE"
+                })
+            else:
+                timestamped = [c for c in current_cands if c["timestamp_dt"] is not None]
+                if len(timestamped) == len(current_cands):
+                    timestamped.sort(key=lambda x: x["timestamp_dt"], reverse=True)
+                    chosen = timestamped[0]
+                    page_no, bbox = self._find_snippet_location(chosen["snippet"], pages_data)
+                    extracted.append({
+                        "field_name": "fasting_glucose",
+                        "category": "glucose_metabolism",
+                        "extracted_value": chosen["value"],
+                        "unit": chosen["unit"],
+                        "source_text": f"{chosen['snippet']} (Collection: {chosen['timestamp_str']}; repeat measurement)",
+                        "source_page": page_no,
+                        "bounding_box": bbox,
+                        "confidence": 0.94,
+                        "extraction_method": "deterministic_regex",
+                        "validation_status": "VALID" if int(chosen["value"]) < 95 else "ALERT_ELEVATED_FASTING_GLUCOSE"
+                    })
+                    for p in timestamped[1:]:
+                        historical_cands.append(p)
+                else:
+                    composite_vals = " vs ".join(c["value"] for c in current_cands)
+                    first_c = current_cands[0]
+                    page_no, bbox = self._find_snippet_location(first_c["snippet"], pages_data)
+                    extracted.append({
+                        "field_name": "fasting_glucose",
+                        "category": "glucose_metabolism",
+                        "extracted_value": first_c["value"],
+                        "unit": first_c["unit"],
+                        "source_text": f"Multiple conflicting fasting glucose values ({composite_vals} mg/dL) found without chronological timestamps. Requires clinician verification.",
+                        "source_page": page_no,
+                        "bounding_box": bbox,
+                        "confidence": 0.60,
+                        "extraction_method": "deterministic_regex",
+                        "validation_status": "AMBIGUOUS_REQUIRES_CLINICIAN_REVIEW"
+                    })
+
+        # 2. Preserve historical candidate(s)
+        for h in historical_cands:
+            page_no, bbox = self._find_snippet_location(h["snippet"], pages_data)
+            extracted.append({
+                "field_name": "historical_fasting_glucose",
+                "category": "glucose_metabolism",
+                "extracted_value": h["value"],
+                "unit": h["unit"],
+                "source_text": h["line_context"] or h["snippet"],
+                "source_page": page_no,
+                "bounding_box": bbox,
+                "confidence": 0.95,
+                "extraction_method": "deterministic_regex",
+                "validation_status": "HISTORICAL_RECORD"
+            })
+
+        return extracted
+
     def _find_snippet_location(self, snippet: str, pages_data: List[Dict[str, Any]]) -> Tuple[int, Dict[str, float]]:
         cleaned_snippet = re.sub(r"\s+", " ", snippet).strip().lower()
+        num_match = re.search(r"\b([0-9]+(?:\.[0-9]+)?)\b", cleaned_snippet)
+        target_num = num_match.group(1) if num_match else None
+
+        # Pass 1: exact substring match
         for p in pages_data:
             page_no = p.get("page", 1)
             for block in p.get("blocks", []):
                 block_txt = re.sub(r"\s+", " ", block.get("text", "")).strip().lower()
-                if cleaned_snippet in block_txt or any(part in block_txt for part in cleaned_snippet.split() if len(part) > 3):
+                if cleaned_snippet in block_txt:
                     return page_no, block.get("bbox", {"x": 0.1, "y": 0.1, "width": 0.8, "height": 0.05})
+
+        # Pass 2: block contains target number AND at least one key word
+        if target_num:
+            for p in pages_data:
+                page_no = p.get("page", 1)
+                for block in p.get("blocks", []):
+                    block_txt = re.sub(r"\s+", " ", block.get("text", "")).strip().lower()
+                    if target_num in block_txt and any(part in block_txt for part in cleaned_snippet.split() if len(part) > 3 and not part.isdigit()):
+                        return page_no, block.get("bbox", {"x": 0.1, "y": 0.1, "width": 0.8, "height": 0.05})
+
+        # Pass 3: fuzzy word match
+        for p in pages_data:
+            page_no = p.get("page", 1)
+            for block in p.get("blocks", []):
+                block_txt = re.sub(r"\s+", " ", block.get("text", "")).strip().lower()
+                if any(part in block_txt for part in cleaned_snippet.split() if len(part) > 3):
+                    return page_no, block.get("bbox", {"x": 0.1, "y": 0.1, "width": 0.8, "height": 0.05})
+
         return 1, {"x": 0.1, "y": 0.1, "width": 0.8, "height": 0.05}
 
     def _generate_rule_based_summary(

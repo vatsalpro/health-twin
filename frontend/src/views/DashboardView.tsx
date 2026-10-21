@@ -1,24 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { api, MaternalTwinState, RiskPrediction, MedicalDocument } from '../api/client';
+import { api, MaternalTwinState, RiskPrediction } from '../api/client';
 import { MaternalTwin3D } from '../components/MaternalTwin3D';
 import {
   Activity,
   AlertCircle,
   ArrowRight,
-  Calendar,
-  CheckCircle2,
   Clock,
   Dna,
   FileText,
-  Heart,
-  Plus,
-  ShieldAlert,
+  HeartPulse,
   Sparkles,
   TrendingUp,
   Upload,
+  Calendar,
+  CheckCircle2,
+  AlertTriangle,
+  Cpu
 } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { MetricCard } from '../components/ui/MetricCard';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Alert } from '../components/ui/Alert';
 
 export const DashboardView: React.FC = () => {
   const { selectedPatient, selectedPatientId } = useAuth();
@@ -26,7 +32,6 @@ export const DashboardView: React.FC = () => {
 
   const [twin, setTwin] = useState<MaternalTwinState | null>(null);
   const [prediction, setPrediction] = useState<RiskPrediction | null>(null);
-  const [documents, setDocuments] = useState<MedicalDocument[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -35,14 +40,16 @@ export const DashboardView: React.FC = () => {
     const loadDashboardData = async () => {
       setLoading(true);
       try {
-        const [twinData, preds, timelineData] = await Promise.all([
+        const [twinData, preds] = await Promise.all([
           api.getCurrentTwin(selectedPatientId),
           api.getPredictions(selectedPatientId),
-          api.getPatientTimeline(selectedPatientId),
         ]);
         setTwin(twinData);
         if (preds.length > 0) {
-          setPrediction(preds[0]);
+          const validPred = preds.find((p) => !p.is_insufficient_data) || preds[0];
+          setPrediction(validPred);
+        } else {
+          setPrediction(null);
         }
       } catch (err) {
         console.error('Failed to load dashboard:', err);
@@ -56,282 +63,398 @@ export const DashboardView: React.FC = () => {
 
   if (!selectedPatient) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
-        <AlertCircle className="w-12 h-12 text-[#A5B3C8] mb-3" />
-        <h2 className="text-xl font-semibold text-[#F4F7FC]">No Research Patient Selected</h2>
-        <p className="text-sm text-[#A5B3C8] mt-1">Please select a subject from the left navigation rail.</p>
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8 bg-white rounded-2xl border border-slate-200">
+        <AlertCircle className="w-12 h-12 text-slate-400 mb-3" />
+        <h2 className="text-xl font-bold text-slate-800">No Research Subject Selected</h2>
+        <p className="text-sm text-slate-500 mt-1">Please select an active patient from the sidebar context switcher.</p>
       </div>
     );
   }
 
   const activeEpisode = selectedPatient.episodes[0];
-  const gaWeeks = activeEpisode?.current_gestational_age_weeks || twin?.gestational_age_weeks || 28.0;
+  const gaWeeks = activeEpisode?.current_gestational_age_weeks || twin?.gestational_age_weeks;
 
   return (
     <div className="space-y-6">
-      {/* Patient Hero Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-6 glass-panel-elevated rounded-2xl">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold tracking-tight text-[#F4F7FC]">
+      {/* Patient Overview Header Banner */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900">
               {selectedPatient.first_name} {selectedPatient.last_name}
             </h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-[#5BE7E8]/15 text-[#5BE7E8] border border-[#5BE7E8]/30">
-              {selectedPatient.mrn}
-            </span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-[#142137] text-[#A5B3C8]">
-              Singleton Pregnancy
-            </span>
+            <Badge variant="primary" className="font-mono">
+              MRN: {selectedPatient.mrn}
+            </Badge>
+            <Badge variant="neutral">
+              Singleton Episode
+            </Badge>
+            {twin?.data_freshness_status && (
+              <Badge variant={twin.data_freshness_status === 'FRESH' ? 'success' : 'warning'}>
+                {twin.data_freshness_status} OBSERVATIONS
+              </Badge>
+            )}
           </div>
-          <p className="text-sm text-[#A5B3C8]">
-            Estimated Due Date:{' '}
-            <strong className="text-[#F4F7FC]">{activeEpisode?.estimated_due_date || '2026-11-15'}</strong>{' '}
-            | Maternal Age: <strong className="text-[#F4F7FC]">{selectedPatient.maternal_age} yrs</strong> | Gravida{' '}
-            {selectedPatient.gravidity}, Para {selectedPatient.parity}
+          <p className="text-xs md:text-sm text-slate-500 mt-1.5 flex items-center gap-3 flex-wrap">
+            <span>EDD: <strong className="text-slate-800 font-semibold">{activeEpisode?.estimated_due_date || 'Not calculated'}</strong></span>
+            <span>•</span>
+            <span>Maternal Age: <strong className="text-slate-800 font-semibold">{selectedPatient.maternal_age} yrs</strong></span>
+            <span>•</span>
+            <span>Obstetric History: <strong className="text-slate-800 font-semibold">G{selectedPatient.gravidity} P{selectedPatient.parity}</strong></span>
+            <span>•</span>
+            <span>Gestational Age: <strong className="text-sky-700 font-semibold font-mono">{gaWeeks ? `${gaWeeks.toFixed(1)} weeks` : 'Not recorded'}</strong></span>
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => navigate('/medical-records')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#101A2B] hover:bg-[#142137] border border-[rgba(166,190,220,0.2)] text-xs font-medium text-[#F4F7FC] transition-all"
           >
-            <Upload className="w-4 h-4 text-[#5BE7E8]" />
-            <span>Upload Prenatal Report</span>
-          </button>
-          <button
-            onClick={() => navigate('/maternal-twin')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#5BE7E8] to-[#43D6B0] hover:opacity-95 text-[#070B14] font-semibold text-xs shadow-lg shadow-[#5BE7E8]/20 transition-all"
+            <Upload className="w-4 h-4 text-slate-600" />
+            <span>Upload Document</span>
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate('/measurements-devices')}
           >
-            <Dna className="w-4 h-4" />
-            <span>Open Living Twin (3D)</span>
-          </button>
+            <Cpu className="w-4 h-4 text-sky-700" />
+            <span>Manual Vitals Entry</span>
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => navigate('/simulation-lab')}
+          >
+            <Sparkles className="w-4 h-4 text-white" />
+            <span>Launch Simulation</span>
+          </Button>
         </div>
       </div>
 
-      {/* Grid: 3D Twin Preview + Hemodynamic Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Living Twin 3D Viewport Card */}
-        <div className="lg:col-span-7 glass-panel p-6 flex flex-col justify-between relative overflow-hidden group">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <span className="text-[11px] font-mono uppercase tracking-wider text-[#5BE7E8]">
-                Longitudinal Twin State (v{twin?.version || 1})
-              </span>
-              <h3 className="text-lg font-bold text-[#F4F7FC] flex items-center gap-2 mt-0.5">
-                Biological Synthesis
-                <span className="w-2 h-2 rounded-full bg-[#43D6B0] animate-pulse" />
-              </h3>
-            </div>
-            <button
-              onClick={() => navigate('/maternal-twin')}
-              className="text-xs text-[#5BE7E8] hover:underline flex items-center gap-1 font-medium"
-            >
-              Full Visualizer <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
+      {/* Primary KPI Metrics Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          label="Blood Pressure"
+          value={twin?.sbp && twin?.dbp ? `${twin.sbp}/${twin.dbp}` : '—'}
+          unit={twin?.sbp ? 'mmHg' : undefined}
+          secondary={twin?.map_pressure ? `MAP: ${twin.map_pressure} mmHg` : 'No verified recording'}
+          statusBadge={
+            twin?.sbp && twin.sbp >= 140
+              ? { text: 'Elevated (≥140)', variant: 'danger' }
+              : twin?.sbp
+              ? { text: 'Normotensive', variant: 'success' }
+              : { text: 'Not available', variant: 'neutral' }
+          }
+          icon={<HeartPulse className="w-4 h-4" />}
+        />
 
-          <div className="h-80 w-full relative">
+        <MetricCard
+          label="Gestational Age"
+          value={gaWeeks ? gaWeeks.toFixed(1) : '—'}
+          unit={gaWeeks ? 'weeks' : undefined}
+          secondary={
+            gaWeeks
+              ? gaWeeks < 20
+                ? 'Pre-20w (Chronic screening)'
+                : '≥ 20w (Gestational horizon)'
+              : 'Gestational age unverified'
+          }
+          statusBadge={
+            gaWeeks
+              ? { text: `Trimester ${gaWeeks < 13 ? '1' : gaWeeks < 27 ? '2' : '3'}`, variant: 'info' }
+              : { text: 'Not available', variant: 'neutral' }
+          }
+          icon={<Calendar className="w-4 h-4" />}
+        />
+
+        <MetricCard
+          label="Proteinuria"
+          value={
+            twin?.protein_creatinine_ratio !== undefined && twin?.protein_creatinine_ratio !== null
+              ? twin.protein_creatinine_ratio
+              : twin?.proteinuria_dipstick || '—'
+          }
+          unit={twin?.protein_creatinine_ratio ? 'mg/mg' : undefined}
+          secondary={
+            twin?.protein_creatinine_ratio
+              ? 'UPCR quantified'
+              : twin?.proteinuria_dipstick
+              ? 'Dipstick observation'
+              : 'No protein test recorded'
+          }
+          statusBadge={
+            (twin?.protein_creatinine_ratio && twin.protein_creatinine_ratio >= 0.3) ||
+            (twin?.proteinuria_dipstick && ['1+', '2+', '3+'].includes(twin.proteinuria_dipstick))
+              ? { text: 'Proteinuria Detected', variant: 'warning' }
+              : twin?.proteinuria_dipstick
+              ? { text: 'Normal / Negative', variant: 'success' }
+              : { text: 'Not available', variant: 'neutral' }
+          }
+          icon={<Activity className="w-4 h-4" />}
+        />
+
+        <MetricCard
+          label="Platelet Count"
+          value={twin?.platelets ? twin.platelets : '—'}
+          unit={twin?.platelets ? '×10³/µL' : undefined}
+          secondary={
+            twin?.platelets
+              ? twin.platelets < 100
+                ? 'Thrombocytopenia alert'
+                : 'Platelet count normal'
+              : 'No CBC laboratory record'
+          }
+          statusBadge={
+            twin?.platelets && twin.platelets < 100
+              ? { text: 'Low (<100k)', variant: 'danger' }
+              : twin?.platelets
+              ? { text: 'Adequate', variant: 'success' }
+              : { text: 'Not available', variant: 'neutral' }
+          }
+          icon={<TrendingUp className="w-4 h-4" />}
+        />
+      </div>
+
+      {/* Main Grid: Living Twin 3D Viewport + Risk Forecast */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Living Twin 3D Canvas Box */}
+        <Card className="lg:col-span-7 flex flex-col justify-between">
+          <CardHeader>
+            <div>
+              <div className="flex items-center gap-2">
+                <CardTitle>Maternal Digital Twin (3D)</CardTitle>
+                <Badge variant="primary" className="font-mono text-[10px]">
+                  Version {twin?.version || 1}
+                </Badge>
+              </div>
+              <CardDescription>
+                Visual anatomical synthesis reflecting verified maternal observations and gestational stage.
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/maternal-twin')}
+            >
+              <span>Full Visualizer</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
+          </CardHeader>
+
+          <CardContent className="h-80 w-full relative bg-slate-50 rounded-xl overflow-hidden border border-slate-100">
             <MaternalTwin3D
-              gestationalAgeWeeks={gaWeeks}
-              sbp={twin?.sbp || 120}
-              dbp={twin?.dbp || 80}
-              riskCategory={prediction?.risk_category || 'LOW'}
+              gestationalAgeWeeks={gaWeeks || 28.0}
+              sbp={twin?.sbp || undefined}
+              dbp={twin?.dbp || undefined}
+              riskCategory={prediction?.risk_category || 'UNKNOWN'}
               className="w-full h-full"
             />
-          </div>
+          </CardContent>
 
-          <div className="grid grid-cols-3 gap-3 pt-4 border-t border-[rgba(166,190,220,0.1)] text-center">
-            <div className="bg-[#0B1220]/60 p-2.5 rounded-xl">
-              <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">Gestational Age</span>
-              <p className="text-base font-bold text-[#5BE7E8] font-mono mt-0.5">{gaWeeks.toFixed(1)} wks</p>
-            </div>
-            <div className="bg-[#0B1220]/60 p-2.5 rounded-xl">
-              <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">Mean Arterial Pres.</span>
-              <p className="text-base font-bold text-[#F4F7FC] font-mono mt-0.5">
-                {twin?.map_pressure ? `${twin.map_pressure} mmHg` : 'N/A'}
+          <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 text-center">
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+              <span className="text-[10px] uppercase font-semibold text-slate-500 block">Baseline SBP/DBP</span>
+              <p className="text-sm font-bold text-slate-900 font-mono mt-0.5">
+                {twin?.sbp && twin?.dbp ? `${twin.sbp}/${twin.dbp} mmHg` : 'Not recorded'}
               </p>
             </div>
-            <div className="bg-[#0B1220]/60 p-2.5 rounded-xl">
-              <span className="text-[10px] text-[#A5B3C8] uppercase font-mono">Data Freshness</span>
-              <p className="text-base font-bold text-[#43D6B0] font-mono mt-0.5">
-                {twin?.data_freshness_status || 'FRESH'}
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+              <span className="text-[10px] uppercase font-semibold text-slate-500 block">Pulse Pressure</span>
+              <p className="text-sm font-bold text-slate-900 font-mono mt-0.5">
+                {twin?.pulse_pressure ? `${twin.pulse_pressure} mmHg` : 'Not recorded'}
+              </p>
+            </div>
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+              <span className="text-[10px] uppercase font-semibold text-slate-500 block">Telemetry Sync</span>
+              <p className="text-sm font-bold text-emerald-700 font-mono mt-0.5">
+                {twin?.data_freshness_status || 'SYNCHRONIZED'}
               </p>
             </div>
           </div>
-        </div>
+        </Card>
 
-        {/* Clinical Vitals & Risk Prediction Column */}
+        {/* 14-Day Preeclampsia Research Risk Card */}
         <div className="lg:col-span-5 space-y-6">
-          {/* Research Prediction Card */}
-          <div className="glass-panel p-6 border-l-4 border-l-[#5BE7E8]">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[#A5B3C8]">
-                14-Day Preeclampsia Horizon
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase ${
+          <Card className="border-l-4 border-l-sky-600">
+            <CardHeader>
+              <div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 block">
+                  Predictive Research Horizon
+                </span>
+                <CardTitle className="mt-0.5">14-Day Preeclampsia Risk Forecast</CardTitle>
+              </div>
+              <Badge
+                variant={
                   prediction?.risk_category === 'HIGH'
-                    ? 'bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/30'
+                    ? 'danger'
                     : prediction?.risk_category === 'MODERATE'
-                    ? 'bg-[#E9B96E]/20 text-[#E9B96E] border border-[#E9B96E]/30'
-                    : prediction?.risk_category === 'INSUFFICIENT_DATA'
-                    ? 'bg-[#A5B3C8]/20 text-[#A5B3C8]'
-                    : 'bg-[#43D6B0]/20 text-[#43D6B0] border border-[#43D6B0]/30'
-                }`}
+                    ? 'warning'
+                    : prediction?.risk_category === 'LOW'
+                    ? 'success'
+                    : 'neutral'
+                }
+                className="font-bold uppercase tracking-wider"
               >
                 {prediction?.risk_category || 'EVALUATING'}
-              </span>
-            </div>
+              </Badge>
+            </CardHeader>
 
-            {prediction?.is_insufficient_data ? (
-              <div className="space-y-2">
-                <p className="text-sm text-[#E9B96E] font-medium">Insufficient Data For Model Evaluation</p>
-                <p className="text-xs text-[#A5B3C8]">{prediction.insufficient_data_reason}</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-3xl font-extrabold font-mono text-[#F4F7FC]">
-                    {prediction?.risk_score !== undefined
-                      ? `${(prediction.risk_score * 100).toFixed(1)}%`
-                      : 'N/A'}
-                  </span>
-                  <span className="text-xs text-[#A5B3C8]">
-                    95% CI: [{prediction?.confidence_interval_lower ? (prediction.confidence_interval_lower * 100).toFixed(1) : 0}% -{' '}
-                    {prediction?.confidence_interval_upper ? (prediction.confidence_interval_upper * 100).toFixed(1) : 0}%]
-                  </span>
+            <CardContent className="space-y-4">
+              {prediction?.is_insufficient_data ? (
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1.5">
+                  <p className="font-semibold text-amber-800">Insufficient Clinical Data for Assessment</p>
+                  <p className="text-amber-700 leading-relaxed">
+                    {prediction.insufficient_data_reason ||
+                      'Risk assessment requires patient gestational age ≥ 20 weeks and validated baseline blood pressure measurements.'}
+                  </p>
                 </div>
-                <div className="w-full bg-[#0B1220] rounded-full h-2 overflow-hidden border border-[rgba(166,190,220,0.14)]">
-                  <div
-                    className={`h-full transition-all duration-700 ${
-                      (prediction?.risk_score || 0) > 0.4
-                        ? 'bg-[#F43F5E]'
-                        : (prediction?.risk_score || 0) > 0.15
-                        ? 'bg-[#E9B96E]'
-                        : 'bg-[#5BE7E8]'
-                    }`}
-                    style={{ width: `${Math.min(100, (prediction?.risk_score || 0) * 100)}%` }}
-                  />
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-baseline justify-between">
+                    <div>
+                      <span className="text-3xl font-extrabold font-mono text-slate-900">
+                        {prediction?.risk_score !== undefined
+                          ? `${(prediction.risk_score * 100).toFixed(1)}%`
+                          : '—'}
+                      </span>
+                      <span className="text-xs text-slate-500 ml-2">predicted risk probability</span>
+                    </div>
+                    {prediction?.confidence_interval_lower !== undefined && (
+                      <span className="text-xs font-mono text-slate-500">
+                        95% CI: [{(prediction.confidence_interval_lower * 100).toFixed(0)}% – {(prediction.confidence_interval_upper! * 100).toFixed(0)}%]
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Accessible Progress Bar */}
+                  <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden border border-slate-200">
+                    <div
+                      className={`h-full transition-all duration-700 ${
+                        (prediction?.risk_score || 0) >= 0.4
+                          ? 'bg-rose-600'
+                          : (prediction?.risk_score || 0) >= 0.15
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-600'
+                      }`}
+                      style={{ width: `${Math.min(100, (prediction?.risk_score || 0) * 100)}%` }}
+                    />
+                  </div>
+
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Evaluated by the longitudinal preeclampsia risk model using verified clinical observations.
+                    Strict temporal cutoffs are enforced to prevent prospective data leakage.
+                  </p>
                 </div>
-                <p className="text-[11px] text-[#A5B3C8] leading-relaxed">
-                  Based on longitudinal trajectory and clinical factors. Strictly bounded by temporal cutoff to prevent leakage.
-                </p>
-              </div>
-            )}
+              )}
 
-            <button
-              onClick={() => navigate('/risk-forecast')}
-              className="mt-4 w-full py-2 bg-[#142137] hover:bg-[#192a45] rounded-lg text-xs font-medium text-[#5BE7E8] transition-colors flex items-center justify-center gap-1.5"
-            >
-              <span>Inspect Contributing Evidence</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Current Clinical Measurements Grid */}
-          <div className="glass-panel p-6">
-            <h3 className="text-sm font-semibold text-[#F4F7FC] mb-4 flex items-center justify-between">
-              <span>Accepted Clinical Observations</span>
-              <button
-                onClick={() => navigate('/observations')}
-                className="text-xs text-[#5BE7E8] hover:underline"
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full mt-2"
+                onClick={() => navigate('/risk-forecast')}
               >
-                View History
-              </button>
-            </h3>
+                <span>Inspect Biomarker Evidence & Feature Weights</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            </CardContent>
+          </Card>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 bg-[#0B1220]/70 rounded-xl border border-[rgba(166,190,220,0.1)]">
-                <span className="text-[#A5B3C8] text-[10px] uppercase font-mono">Blood Pressure</span>
-                <p className="text-base font-bold font-mono text-[#F4F7FC] mt-0.5">
-                  {twin?.sbp && twin?.dbp ? `${twin.sbp}/${twin.dbp}` : 'Unrecorded'}{' '}
-                  <span className="text-[10px] text-[#A5B3C8] font-normal">mmHg</span>
-                </p>
-                {twin?.sbp && twin.sbp >= 140 && (
-                  <span className="text-[10px] text-[#F43F5E] font-medium">Stage 1 Hypertensive</span>
-                )}
-              </div>
+          {/* Secondary Laboratory Values Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Additional Organ System Markers</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-sky-700 hover:text-sky-800"
+                onClick={() => navigate('/observations')}
+              >
+                <span>All Observations</span>
+              </Button>
+            </CardHeader>
 
-              <div className="p-3 bg-[#0B1220]/70 rounded-xl border border-[rgba(166,190,220,0.1)]">
-                <span className="text-[#A5B3C8] text-[10px] uppercase font-mono">Urine Protein</span>
-                <p className="text-base font-bold font-mono text-[#F4F7FC] mt-0.5">
-                  {twin?.proteinuria_dipstick || (twin?.protein_creatinine_ratio ? `${twin.protein_creatinine_ratio} mg/mg` : 'Negative')}
-                </p>
-                <span className="text-[10px] text-[#A5B3C8]">
-                  {twin?.protein_creatinine_ratio ? 'UPCR quantified' : 'Dipstick reader'}
-                </span>
-              </div>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-slate-500 font-semibold uppercase text-[10px]">Liver Enzymes (AST / ALT)</span>
+                  <p className="text-base font-bold font-mono text-slate-900 mt-0.5">
+                    {twin?.ast !== undefined && twin?.ast !== null ? `${twin.ast}` : 'Not recorded'} / {twin?.alt !== undefined && twin?.alt !== null ? `${twin.alt}` : 'Not recorded'}
+                    {twin?.ast !== undefined && <span className="text-[10px] text-slate-500 font-normal"> U/L</span>}
+                  </p>
+                  <span className="text-[10px] text-slate-500">
+                    {twin?.ast && twin.ast > 70 ? 'Elevated transaminases' : 'ACOG threshold: ≤ 70 U/L'}
+                  </span>
+                </div>
 
-              <div className="p-3 bg-[#0B1220]/70 rounded-xl border border-[rgba(166,190,220,0.1)]">
-                <span className="text-[#A5B3C8] text-[10px] uppercase font-mono">Platelet Count</span>
-                <p className="text-base font-bold font-mono text-[#F4F7FC] mt-0.5">
-                  {twin?.platelets ? `${twin.platelets}k` : '168k'}{' '}
-                  <span className="text-[10px] text-[#A5B3C8] font-normal">/uL</span>
-                </p>
-                <span className="text-[10px] text-[#43D6B0]">Normal (&gt;150k)</span>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-slate-500 font-semibold uppercase text-[10px]">Serum Creatinine</span>
+                  <p className="text-base font-bold font-mono text-slate-900 mt-0.5">
+                    {twin?.serum_creatinine !== undefined && twin?.serum_creatinine !== null
+                      ? `${twin.serum_creatinine} mg/dL`
+                      : 'Not recorded'}
+                  </p>
+                  <span className="text-[10px] text-slate-500">
+                    {twin?.serum_creatinine && twin.serum_creatinine > 1.1
+                      ? 'Renal impairment alert'
+                      : 'Threshold: ≤ 1.1 mg/dL'}
+                  </span>
+                </div>
               </div>
-
-              <div className="p-3 bg-[#0B1220]/70 rounded-xl border border-[rgba(166,190,220,0.1)]">
-                <span className="text-[#A5B3C8] text-[10px] uppercase font-mono">Liver AST / ALT</span>
-                <p className="text-base font-bold font-mono text-[#F4F7FC] mt-0.5">
-                  {twin?.ast ? `${twin.ast}` : '32'} / {twin?.alt ? `${twin.alt}` : '28'}{' '}
-                  <span className="text-[10px] text-[#A5B3C8] font-normal">U/L</span>
-                </p>
-                <span className="text-[10px] text-[#43D6B0]">Enzymes Normal</span>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
-      {/* Quick Launch Action Ribbon */}
+      {/* Quick Action Navigation Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div
           onClick={() => navigate('/simulation-lab')}
-          className="glass-panel p-5 cursor-pointer hover:border-[#5BE7E8]/40 transition-all group"
+          className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between">
-            <span className="p-2.5 rounded-xl bg-[#5BE7E8]/10 text-[#5BE7E8]">
+            <div className="w-9 h-9 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-700">
               <Sparkles className="w-5 h-5" />
-            </span>
-            <ArrowRight className="w-4 h-4 text-[#A5B3C8] group-hover:text-[#5BE7E8] group-hover:translate-x-1 transition-all" />
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-sky-600 group-hover:translate-x-1 transition-all" />
           </div>
-          <h4 className="font-semibold text-sm text-[#F4F7FC] mt-3">Simulation Lab</h4>
-          <p className="text-xs text-[#A5B3C8] mt-1">
-            Test counterfactual scenarios (e.g. SBP escalation or protein spike) with zero record mutation.
+          <h4 className="font-semibold text-sm text-slate-900 mt-3">Simulation Lab (What-If?)</h4>
+          <p className="text-xs text-slate-500 mt-1">
+            Explore counterfactual scenarios with explicit mathematical formulas and zero risk of record contamination.
+          </p>
+        </div>
+
+        <div
+          onClick={() => navigate('/measurements-devices')}
+          className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <div className="w-9 h-9 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700">
+              <Cpu className="w-5 h-5" />
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-teal-600 group-hover:translate-x-1 transition-all" />
+          </div>
+          <h4 className="font-semibold text-sm text-slate-900 mt-3">Measurements & Connected Sensors</h4>
+          <p className="text-xs text-slate-500 mt-1">
+            Unified entry for BP, glucose, separate weight & temperature, pulse oximetry, and mock device streams.
           </p>
         </div>
 
         <div
           onClick={() => navigate('/pregnancy-timeline')}
-          className="glass-panel p-5 cursor-pointer hover:border-[#5BE7E8]/40 transition-all group"
+          className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between">
-            <span className="p-2.5 rounded-xl bg-[#628BFF]/10 text-[#628BFF]">
+            <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700">
               <Clock className="w-5 h-5" />
-            </span>
-            <ArrowRight className="w-4 h-4 text-[#A5B3C8] group-hover:text-[#628BFF] group-hover:translate-x-1 transition-all" />
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-800 group-hover:translate-x-1 transition-all" />
           </div>
-          <h4 className="font-semibold text-sm text-[#F4F7FC] mt-3">Longitudinal Maternal History</h4>
-          <p className="text-xs text-[#A5B3C8] mt-1">
-            Chronological audit of antenatal visits, lab tests, wearable telemetry, and prediction runs.
-          </p>
-        </div>
-
-        <div
-          onClick={() => navigate('/medical-records')}
-          className="glass-panel p-5 cursor-pointer hover:border-[#43D6B0]/40 transition-all group"
-        >
-          <div className="flex items-center justify-between">
-            <span className="p-2.5 rounded-xl bg-[#43D6B0]/10 text-[#43D6B0]">
-              <FileText className="w-5 h-5" />
-            </span>
-            <ArrowRight className="w-4 h-4 text-[#A5B3C8] group-hover:text-[#43D6B0] group-hover:translate-x-1 transition-all" />
-          </div>
-          <h4 className="font-semibold text-sm text-[#F4F7FC] mt-3">Report Ingestion & Evidence</h4>
-          <p className="text-xs text-[#A5B3C8] mt-1">
-            Upload text or scanned PDFs; inspect extracted values mapped directly to document pages.
+          <h4 className="font-semibold text-sm text-slate-900 mt-3">Longitudinal Antenatal Timeline</h4>
+          <p className="text-xs text-slate-500 mt-1">
+            Chronological log of obstetric visits, lab panels, and maternal physiological progressions.
           </p>
         </div>
       </div>

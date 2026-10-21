@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Activity, ShieldCheck, AlertCircle, RefreshCw, Eye, Sparkles } from 'lucide-react';
+import { AlertCircle, Sparkles } from 'lucide-react';
 
 interface MaternalTwin3DProps {
   gestationalAgeWeeks?: number;
@@ -296,10 +296,10 @@ export const MaternalTwin3D: React.FC<MaternalTwin3DProps> = ({
     window.addEventListener('mouseup', onMouseUp);
 
     // Animation Loop
-    const clock = new THREE.Clock();
+    const startTime = performance.now();
     const animate = () => {
       animationFrameId.current = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime();
+      const elapsedTime = (performance.now() - startTime) / 1000;
 
       // Update shader uniforms
       ambientMaterial.uniforms.uTime.value = elapsedTime;
@@ -389,38 +389,38 @@ export const MaternalTwin3D: React.FC<MaternalTwin3DProps> = ({
       <div ref={mountRef} className="w-full h-full min-h-[420px] cursor-grab active:cursor-grabbing" />
 
       {/* Floating Telemetry HUD Overlays */}
-      <div className="absolute top-4 left-4 flex flex-col gap-2 pointer-events-none">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#070B14]/85 border border-[#5BE7E8]/30 backdrop-blur-md">
-          <div className="w-2 h-2 rounded-full bg-[#5BE7E8] animate-ping" />
-          <span className="text-xs font-mono font-medium text-[#F4F7FC]">
-            LIVING TWIN: {gestationalAgeWeeks.toFixed(1)} WEEKS
+      <div className="absolute top-3 left-3 flex flex-col gap-2 pointer-events-none">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 border border-slate-200 shadow-xs backdrop-blur-md">
+          <div className="w-2 h-2 rounded-full bg-sky-600 animate-pulse" />
+          <span className="text-xs font-mono font-semibold text-slate-800">
+            {gestationalAgeWeeks.toFixed(1)} WEEKS
           </span>
         </div>
 
         {isSimulated && (
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#E9B96E]/20 border border-[#E9B96E]/40 text-[#E9B96E] text-xs font-medium">
-            <Sparkles className="w-3.5 h-3.5" />
-            Hypothetical What-If Scenario
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium shadow-xs">
+            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+            Hypothetical Simulation
           </div>
         )}
       </div>
 
-      <div className="absolute top-4 right-4 flex flex-col items-end gap-2 pointer-events-none">
-        <div className="px-3 py-1.5 rounded-lg bg-[#070B14]/80 border border-[rgba(166,190,220,0.14)] text-right backdrop-blur-md">
-          <span className="text-[10px] uppercase font-mono tracking-wider text-[#A5B3C8]">Hemodynamics</span>
-          <p className="text-sm font-semibold tabular-nums text-[#F4F7FC]">
-            {sbp}/{dbp} <span className="text-xs font-normal text-[#A5B3C8]">mmHg</span>
+      <div className="absolute top-3 right-3 flex flex-col items-end gap-2 pointer-events-none">
+        <div className="px-3 py-1.5 rounded-lg bg-white/90 border border-slate-200 text-right shadow-xs backdrop-blur-md">
+          <span className="text-[10px] uppercase font-semibold text-slate-500 block">Hemodynamics</span>
+          <p className="text-sm font-bold tabular-nums font-mono text-slate-900">
+            {sbp}/{dbp} <span className="text-[10px] font-normal text-slate-500">mmHg</span>
           </p>
         </div>
       </div>
 
       {/* Camera & Rotation Presets */}
-      <div className="absolute bottom-4 inset-x-0 flex justify-center items-center gap-2 pointer-events-auto">
-        <div className="flex items-center gap-1 p-1 bg-[#0B1220]/90 border border-[rgba(166,190,220,0.18)] rounded-xl backdrop-blur-md">
+      <div className="absolute bottom-3 inset-x-0 flex justify-center items-center gap-2 pointer-events-auto">
+        <div className="flex items-center gap-1 p-1 bg-white/90 border border-slate-200 rounded-xl shadow-xs backdrop-blur-md">
           <button
             onClick={() => setCurrentViewMode('ANTERIOR')}
             className={`px-3 py-1 text-xs rounded-lg font-medium transition-colors ${
-              currentViewMode === 'ANTERIOR' ? 'bg-[#5BE7E8]/20 text-[#5BE7E8] border border-[#5BE7E8]/30' : 'text-[#A5B3C8] hover:text-[#F4F7FC]'
+              currentViewMode === 'ANTERIOR' ? 'bg-sky-50 text-sky-800 border border-sky-200 font-semibold' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Anterior
@@ -428,7 +428,7 @@ export const MaternalTwin3D: React.FC<MaternalTwin3DProps> = ({
           <button
             onClick={() => setCurrentViewMode('LATERAL')}
             className={`px-3 py-1 text-xs rounded-lg font-medium transition-colors ${
-              currentViewMode === 'LATERAL' ? 'bg-[#5BE7E8]/20 text-[#5BE7E8] border border-[#5BE7E8]/30' : 'text-[#A5B3C8] hover:text-[#F4F7FC]'
+              currentViewMode === 'LATERAL' ? 'bg-sky-50 text-sky-800 border border-sky-200 font-semibold' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Lateral Profile
@@ -436,7 +436,7 @@ export const MaternalTwin3D: React.FC<MaternalTwin3DProps> = ({
           <button
             onClick={() => setCurrentViewMode('AXIAL')}
             className={`px-3 py-1 text-xs rounded-lg font-medium transition-colors ${
-              currentViewMode === 'AXIAL' ? 'bg-[#5BE7E8]/20 text-[#5BE7E8] border border-[#5BE7E8]/30' : 'text-[#A5B3C8] hover:text-[#F4F7FC]'
+              currentViewMode === 'AXIAL' ? 'bg-sky-50 text-sky-800 border border-sky-200 font-semibold' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Telemetry Orbit

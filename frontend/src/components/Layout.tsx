@@ -13,14 +13,17 @@ import {
   History,
   Settings,
   LogOut,
-  UserCheck,
   ChevronDown,
-  Upload,
-  AlertTriangle,
   Menu,
   X,
-  Stethoscope,
+  Cpu,
+  Camera,
+  HeartPulse,
+  User,
+  Shield,
+  Stethoscope
 } from 'lucide-react';
+import { Badge } from './ui/Badge';
 
 export const Layout: React.FC = () => {
   const { user, selectedPatient, allPatients, setSelectedPatientId, logout } = useAuth();
@@ -29,260 +32,220 @@ export const Layout: React.FC = () => {
 
   const isClinician = user?.role === 'clinician' || user?.role === 'admin';
 
+  const navGroups = [
+    {
+      title: 'Overview',
+      items: [
+        { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      ],
+    },
+    {
+      title: 'Patient Data',
+      items: [
+        { to: '/medical-records', label: 'Medical Records', icon: FileText },
+        { to: '/measurements-devices', label: 'Measurements & Sensors', icon: Cpu },
+        { to: '/observations', label: 'Observations & Trends', icon: Activity },
+        { to: '/pregnancy-timeline', label: 'Pregnancy Timeline', icon: Clock },
+      ],
+    },
+    {
+      title: 'Digital Twin',
+      items: [
+        { to: '/maternal-twin', label: 'Maternal Twin (3D)', icon: Dna },
+        { to: '/risk-forecast', label: 'Risk Research', icon: TrendingUp },
+        { to: '/simulation-lab', label: 'Simulation Lab', icon: FlaskConical },
+      ],
+    },
+    {
+      title: 'Research Tools',
+      items: [
+        { to: '/camera-research', label: 'Camera Signal Research', icon: Camera },
+      ],
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-[#070B14] text-[#F4F7FC] flex flex-col md:flex-row grid-bg">
-      {/* Top Header on Mobile */}
-      <div className="md:hidden flex items-center justify-between p-4 border-b border-[rgba(166,190,220,0.14)] bg-[#0B1220]">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#5BE7E8] to-[#628BFF] flex items-center justify-center font-bold text-[#070B14]">
-            PT
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col md:flex-row grid-bg">
+      {/* Mobile Top Header */}
+      <div className="md:hidden flex items-center justify-between p-4 border-b border-slate-200 bg-white sticky top-0 z-50">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center font-bold text-white shadow-sm">
+            <HeartPulse className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold tracking-tight text-lg text-[#F4F7FC]">PregTwin</span>
+          <div>
+            <span className="font-bold tracking-tight text-base text-slate-900">PregTwin</span>
+            <span className="text-[10px] text-sky-700 block -mt-0.5 font-medium">Research Platform</span>
+          </div>
         </div>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-2 text-[#A5B3C8] hover:text-[#F4F7FC]"
+          className="p-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
+          aria-label="Toggle navigation"
         >
           {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
       </div>
 
-      {/* Navigation Rail */}
+      {/* Sidebar Navigation */}
       <aside
         className={`${
-          mobileMenuOpen ? 'block' : 'hidden'
-        } md:flex flex-col w-full md:w-64 border-r border-[rgba(166,190,220,0.14)] bg-[#0B1220]/95 backdrop-blur-xl shrink-0 z-40 transition-all`}
+          mobileMenuOpen ? 'block fixed inset-0 z-50' : 'hidden'
+        } md:flex flex-col w-full md:w-64 border-r border-slate-200 bg-white shrink-0 md:sticky md:top-0 md:h-screen transition-all shadow-sm`}
       >
-        {/* Brand */}
-        <div className="p-6 border-b border-[rgba(166,190,220,0.1)] flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#5BE7E8] via-[#43D6B0] to-[#628BFF] flex items-center justify-center font-bold text-[#070B14] shadow-lg shadow-[#5BE7E8]/10">
-            PT
+        {/* Mobile close overlay */}
+        {mobileMenuOpen && (
+          <div className="md:hidden flex items-center justify-between p-4 border-b border-slate-100">
+            <span className="text-sm font-semibold text-slate-800">Navigation</span>
+            <button
+              onClick={() => setMobileMenuOpen(false)}
+              className="p-1.5 text-slate-500 hover:text-slate-800 rounded-md hover:bg-slate-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
+        {/* Brand Header */}
+        <div className="p-5 border-b border-slate-100 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-teal-500 flex items-center justify-center font-bold text-white shadow-sm">
+            <HeartPulse className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-lg tracking-tight text-[#F4F7FC] leading-none">PregTwin</h1>
-            <p className="text-[11px] font-mono text-[#5BE7E8] mt-1 tracking-wider uppercase">
-              Maternal Digital Twin
+            <h1 className="font-bold text-lg tracking-tight text-slate-900 leading-none">PregTwin</h1>
+            <p className="text-[11px] font-medium text-slate-500 mt-0.5">
+              Maternal Digital Twin Lab
             </p>
           </div>
         </div>
 
-        {/* Patient Context Switcher */}
-        <div className="p-4 border-b border-[rgba(166,190,220,0.1)]">
-          <label className="text-[10px] uppercase font-mono tracking-wider text-[#A5B3C8] block mb-1">
+        {/* Patient Selection & Summary */}
+        <div className="p-3.5 mx-3 mt-3 bg-slate-50 rounded-xl border border-slate-200/80">
+          <label className="text-[10px] uppercase font-semibold tracking-wider text-slate-500 block mb-1">
             Active Research Subject
           </label>
           <div className="relative">
             <select
               value={selectedPatient?.id || ''}
               onChange={(e) => setSelectedPatientId(e.target.value)}
-              className="w-full bg-[#101A2B] border border-[rgba(166,190,220,0.2)] rounded-lg px-3 py-2 text-xs text-[#F4F7FC] focus:outline-none focus:border-[#5BE7E8] transition-colors appearance-none cursor-pointer"
+              className="w-full bg-white border border-slate-200 rounded-lg pl-2.5 pr-7 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-sky-500 transition-colors appearance-none cursor-pointer shadow-2xs"
             >
               {allPatients.map((p) => (
-                <option key={p.id} value={p.id} className="bg-[#101A2B] text-[#F4F7FC]">
+                <option key={p.id} value={p.id}>
                   {p.first_name} {p.last_name} ({p.mrn})
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 text-[#A5B3C8] absolute right-2.5 top-2.5 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2.5 pointer-events-none" />
           </div>
 
           {selectedPatient && (
-            <div className="mt-2.5 flex items-center justify-between text-[11px] text-[#A5B3C8]">
-              <span>GA: <strong className="text-[#5BE7E8] font-mono">{selectedPatient.episodes[0]?.current_gestational_age_weeks || 28.0}w</strong></span>
-              <span>Age: <strong className="text-[#F4F7FC]">{selectedPatient.maternal_age}y</strong></span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#5BE7E8]/10 text-[#5BE7E8] font-mono">
-                SYNTHETIC
+            <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-600">
+              <span>GA: <strong className="text-sky-700 font-mono font-semibold">{selectedPatient.episodes[0]?.current_gestational_age_weeks ? `${selectedPatient.episodes[0]?.current_gestational_age_weeks}w` : 'Not recorded'}</strong></span>
+              <span>Age: <strong className="text-slate-800">{selectedPatient.maternal_age}y</strong></span>
+              <span className="px-1.5 py-0.2 rounded text-[9px] bg-slate-200 text-slate-700 font-medium font-mono">
+                COHORT
               </span>
             </div>
           )}
         </div>
 
-        {/* Navigation Links */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          <NavLink
-            to="/dashboard"
-            onClick={() => setMobileMenuOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                isActive
-                  ? 'bg-[#5BE7E8]/15 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC] hover:bg-[#101A2B]/60'
-              }`
-            }
-          >
-            <LayoutDashboard className="w-4 h-4" />
-            <span>Maternal Dashboard</span>
-          </NavLink>
+        {/* Navigation Groups */}
+        <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto">
+          {navGroups.map((group) => (
+            <div key={group.title} className="space-y-1">
+              <span className="px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-1">
+                {group.title}
+              </span>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={({ isActive }) =>
+                      `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        isActive
+                          ? 'bg-sky-50 text-sky-800 font-semibold border-l-3 border-sky-600 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`
+                    }
+                  >
+                    <Icon className="w-4 h-4 shrink-0 text-slate-500" />
+                    <span>{item.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          ))}
 
-          <NavLink
-            to="/maternal-twin"
-            onClick={() => setMobileMenuOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                isActive
-                  ? 'bg-[#5BE7E8]/15 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC] hover:bg-[#101A2B]/60'
-              }`
-            }
-          >
-            <Dna className="w-4 h-4" />
-            <span>Living Maternal Twin (3D)</span>
-          </NavLink>
-
-          <NavLink
-            to="/pregnancy-timeline"
-            onClick={() => setMobileMenuOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                isActive
-                  ? 'bg-[#5BE7E8]/15 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC] hover:bg-[#101A2B]/60'
-              }`
-            }
-          >
-            <Clock className="w-4 h-4" />
-            <span>Pregnancy Timeline</span>
-          </NavLink>
-
-          <NavLink
-            to="/medical-records"
-            onClick={() => setMobileMenuOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                isActive
-                  ? 'bg-[#5BE7E8]/15 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC] hover:bg-[#101A2B]/60'
-              }`
-            }
-          >
-            <FileText className="w-4 h-4" />
-            <span>Medical Reports & OCR</span>
-          </NavLink>
-
-          <NavLink
-            to="/observations"
-            onClick={() => setMobileMenuOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                isActive
-                  ? 'bg-[#5BE7E8]/15 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC] hover:bg-[#101A2B]/60'
-              }`
-            }
-          >
-            <Activity className="w-4 h-4" />
-            <span>Observations & Trends</span>
-          </NavLink>
-
-          <NavLink
-            to="/risk-forecast"
-            onClick={() => setMobileMenuOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                isActive
-                  ? 'bg-[#5BE7E8]/15 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC] hover:bg-[#101A2B]/60'
-              }`
-            }
-          >
-            <TrendingUp className="w-4 h-4" />
-            <span>Preeclampsia Risk Forecast</span>
-          </NavLink>
-
-          <NavLink
-            to="/simulation-lab"
-            onClick={() => setMobileMenuOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                isActive
-                  ? 'bg-[#5BE7E8]/15 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC] hover:bg-[#101A2B]/60'
-              }`
-            }
-          >
-            <FlaskConical className="w-4 h-4" />
-            <span>Simulation Lab</span>
-          </NavLink>
-
-          {/* Clinician Specific Routes */}
+          {/* Clinician Specific Workspace */}
           {isClinician && (
-            <>
-              <div className="pt-3 pb-1">
-                <span className="px-3 text-[10px] font-mono uppercase tracking-wider text-[#E9B96E]">
-                  Clinician Workspace
-                </span>
-              </div>
-
+            <div className="space-y-1 pt-2 border-t border-slate-100">
+              <span className="px-3 text-[10px] font-semibold uppercase tracking-wider text-amber-700 block mb-1">
+                Clinician Workspace
+              </span>
               <NavLink
                 to="/clinician/review-queue"
                 onClick={() => setMobileMenuOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                  `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                     isActive
-                      ? 'bg-[#E9B96E]/20 text-[#E9B96E] border border-[#E9B96E]/40 shadow-sm'
-                      : 'text-[#A5B3C8] hover:text-[#F4F7FC] hover:bg-[#101A2B]/60'
+                      ? 'bg-amber-50 text-amber-900 font-semibold border-l-3 border-amber-600 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`
                 }
               >
-                <ClipboardList className="w-4 h-4" />
-                <span>Clinical Review Queue</span>
+                <ClipboardList className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>Review Queue</span>
               </NavLink>
-
               <NavLink
                 to="/audit-history"
                 onClick={() => setMobileMenuOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                  `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                     isActive
-                      ? 'bg-[#5BE7E8]/15 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                      : 'text-[#A5B3C8] hover:text-[#F4F7FC] hover:bg-[#101A2B]/60'
+                      ? 'bg-amber-50 text-amber-900 font-semibold border-l-3 border-amber-600 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`
                 }
               >
-                <History className="w-4 h-4" />
+                <History className="w-4 h-4 shrink-0 text-amber-600" />
                 <span>Audit History</span>
               </NavLink>
-            </>
+            </div>
           )}
-
-          <div className="pt-3 pb-1">
-            <span className="px-3 text-[10px] font-mono uppercase tracking-wider text-[#A5B3C8]">
-              Configuration
-            </span>
-          </div>
-
-          <NavLink
-            to="/settings"
-            onClick={() => setMobileMenuOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                isActive
-                  ? 'bg-[#5BE7E8]/15 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                  : 'text-[#A5B3C8] hover:text-[#F4F7FC] hover:bg-[#101A2B]/60'
-              }`
-            }
-          >
-            <Settings className="w-4 h-4" />
-            <span>Diagnostics & AI Setup</span>
-          </NavLink>
         </nav>
 
-        {/* User Footer */}
-        <div className="p-4 border-t border-[rgba(166,190,220,0.1)] bg-[#070B14]/60">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-[#142137] border border-[rgba(166,190,220,0.2)] flex items-center justify-center text-xs text-[#5BE7E8] font-bold">
-                {user?.full_name ? user.full_name[0] : 'U'}
-              </div>
-              <div className="truncate">
-                <p className="text-xs font-medium text-[#F4F7FC] truncate">{user?.full_name || 'Guest'}</p>
-                <p className="text-[10px] text-[#A5B3C8] capitalize">{user?.role || 'User'}</p>
-              </div>
+        {/* Footer User Info & Settings */}
+        <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 font-bold text-xs shrink-0">
+              {user?.full_name ? user.full_name[0] : 'U'}
             </div>
+            <div className="truncate">
+              <p className="text-xs font-semibold text-slate-800 truncate leading-none">
+                {user?.full_name || user?.email}
+              </p>
+              <span className="text-[10px] text-slate-500 capitalize">{user?.role}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <NavLink
+              to="/settings"
+              className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-200/60 transition-colors"
+              title="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </NavLink>
             <button
-              onClick={logout}
-              title="Sign Out"
-              className="p-1.5 text-[#A5B3C8] hover:text-[#F43F5E] hover:bg-[#F43F5E]/10 rounded-lg transition-colors"
+              onClick={() => {
+                logout();
+                navigate('/login');
+              }}
+              className="p-1.5 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-slate-200/60 transition-colors"
+              title="Sign out"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -290,25 +253,9 @@ export const Layout: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Synthetic Data Alert Banner */}
-        <div className="bg-[#101A2B]/90 border-b border-[rgba(166,190,220,0.14)] px-6 py-2 flex items-center justify-between text-xs text-[#A5B3C8] backdrop-blur-md">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-[#E9B96E]" />
-            <span>
-              <strong>Research Demonstration Mode:</strong> All patient records and reports are synthetic fixtures. Not an autonomous medical diagnostic device.
-            </span>
-          </div>
-          <div className="hidden sm:flex items-center gap-3 text-[11px] font-mono">
-            <span>Model: v1.4.2-calibrated</span>
-            <span className="text-[#43D6B0]">● System Ready</span>
-          </div>
-        </div>
-
-        <div className="p-6 md:p-8 flex-1 max-w-7xl w-full mx-auto">
-          <Outlet />
-        </div>
+      {/* Main Content Viewport */}
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+        <Outlet />
       </main>
     </div>
   );

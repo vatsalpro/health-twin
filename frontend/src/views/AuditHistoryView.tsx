@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { History, Shield, Calendar, UserCheck, RefreshCw } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { PageHeader } from '../components/ui/PageHeader';
 
 export const AuditHistoryView: React.FC = () => {
   const [events, setEvents] = useState<any[]>([]);
@@ -24,62 +28,79 @@ export const AuditHistoryView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 glass-panel rounded-2xl">
-        <div>
-          <span className="text-xs font-mono text-[#5BE7E8] uppercase tracking-wider block">
-            REGULATORY & SECURITY AUDIT TRAIL
-          </span>
-          <h2 className="text-2xl font-bold text-[#F4F7FC] mt-1">System & Clinical Decision Audit Log</h2>
-          <p className="text-xs text-[#A5B3C8] mt-0.5">
-            Cryptographically sealed record of document access, clinical review decisions, and model evaluations.
-          </p>
-        </div>
+      <PageHeader
+        badge="REGULATORY & SECURITY AUDIT TRAIL"
+        title="System & Clinical Decision Audit Log"
+        description="Cryptographically sealed record of document access, clinical review decisions, and model evaluations."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadAudit}
+            isLoading={loading}
+            icon={<RefreshCw className="w-3.5 h-3.5" />}
+          >
+            Refresh Audit Trail
+          </Button>
+        }
+      />
 
-        <button
-          onClick={loadAudit}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#142137] hover:bg-[#192a45] text-xs font-medium text-[#5BE7E8] border border-[rgba(166,190,220,0.18)] transition-all"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Refresh Audit Trail</span>
-        </button>
-      </div>
-
-      <div className="glass-panel p-6 rounded-2xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-[rgba(166,190,220,0.14)] text-[10px] font-mono uppercase text-[#A5B3C8]">
-                <th className="pb-3">Timestamp (UTC)</th>
-                <th className="pb-3">User</th>
-                <th className="pb-3">Action</th>
-                <th className="pb-3">Target Entity</th>
-                <th className="pb-3">Details</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[rgba(166,190,220,0.08)]">
-              {events.map((ev) => (
-                <tr key={ev.id} className="hover:bg-[#101A2B]/40 transition-colors">
-                  <td className="py-3 font-mono text-[#A5B3C8]">
-                    {new Date(ev.timestamp).toISOString().replace('T', ' ').substring(0, 19)}
-                  </td>
-                  <td className="py-3 font-medium text-[#F4F7FC]">{ev.user_email || 'system'}</td>
-                  <td className="py-3">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#5BE7E8]/10 text-[#5BE7E8]">
-                      {ev.action}
-                    </span>
-                  </td>
-                  <td className="py-3 font-mono text-[#A5B3C8]">
-                    {ev.target_type ? `${ev.target_type} (${ev.target_id?.substring(0, 8)}...)` : '—'}
-                  </td>
-                  <td className="py-3 text-[#A5B3C8] font-mono text-[11px] truncate max-w-xs">
-                    {JSON.stringify(ev.details || {})}
-                  </td>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Immutable Activity Records ({events.length})</CardTitle>
+          <CardDescription>
+            Chronological audit of sensitive clinical access and decision provenance.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider bg-slate-50">
+                  <th className="py-3 px-3">Timestamp (UTC)</th>
+                  <th className="py-3 px-3">User</th>
+                  <th className="py-3 px-3">Action</th>
+                  <th className="py-3 px-3">Target Entity</th>
+                  <th className="py-3 px-3">Details</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-500">
+                      Loading audit events...
+                    </td>
+                  </tr>
+                ) : events.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-500">
+                      No audit events found.
+                    </td>
+                  </tr>
+                ) : (
+                  events.map((ev) => (
+                    <tr key={ev.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3 px-3 font-mono text-slate-500">
+                        {new Date(ev.timestamp).toISOString().replace('T', ' ').substring(0, 19)}
+                      </td>
+                      <td className="py-3 px-3 font-medium text-slate-900">{ev.user_email || 'system'}</td>
+                      <td className="py-3 px-3">
+                        <Badge variant="primary">{ev.action}</Badge>
+                      </td>
+                      <td className="py-3 px-3 font-mono text-slate-600">
+                        {ev.target_type ? `${ev.target_type} (${ev.target_id?.substring(0, 8)}...)` : '—'}
+                      </td>
+                      <td className="py-3 px-3 text-slate-500 font-mono text-xs truncate max-w-xs">
+                        {JSON.stringify(ev.details || {})}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

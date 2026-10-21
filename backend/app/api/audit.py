@@ -102,6 +102,7 @@ async def get_system_diagnostics(
             "ollama_model_available": ollama_status["model_available"],
             "ollama_installed_models": ollama_status.get("installed_models", []),
             "ollama_latency_ms": ollama_status.get("latency_ms"),
+            "ollama_timeout_seconds": settings.OLLAMA_TIMEOUT_SECONDS,
             "fallback_active": fallback_active,
             "notice": ai_notice
         },

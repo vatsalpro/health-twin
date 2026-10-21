@@ -14,11 +14,15 @@ import {
   CheckCheck,
   AlertCircle,
   Clock,
-  Sparkles,
   Download,
-  ShieldCheck,
-  HelpCircle,
+  Building,
+  Calendar,
 } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { Alert } from '../components/ui/Alert';
+import { Modal } from '../components/ui/Modal';
 
 export const DocumentDetailView: React.FC = () => {
   const { documentId } = useParams<{ documentId: string }>();
@@ -37,6 +41,8 @@ export const DocumentDetailView: React.FC = () => {
   const [correctionValue, setCorrectionValue] = useState<string>('');
   const [clinicianNotes, setClinicianNotes] = useState<string>('');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<boolean>(false);
 
   const isClinician = user?.role === 'clinician' || user?.role === 'admin';
 
@@ -50,8 +56,9 @@ export const DocumentDetailView: React.FC = () => {
         setSelectedField(doc.extracted_fields[0]);
         setCurrentPage(doc.extracted_fields[0].source_page || 1);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load document:', err);
+      setActionError(`Failed to load document: ${err.message || err}`);
     } finally {
       setLoading(false);
     }
@@ -63,429 +70,498 @@ export const DocumentDetailView: React.FC = () => {
 
   const handleReview = async (fieldId: string, decision: 'ACCEPT' | 'REJECT' | 'MODIFY') => {
     if (!documentId) return;
+    setActionError(null);
+    setActionLoading(true);
     try {
+      if (decision === 'MODIFY' && (!correctionValue || !correctionValue.trim())) {
+        setActionError('Please specify a valid non-empty correction value.');
+        setActionLoading(false);
+        return;
+      }
       await api.reviewField(
         documentId,
         fieldId,
         decision,
-        decision === 'MODIFY' ? correctionValue : undefined,
+        decision === 'MODIFY' ? correctionValue.trim() : undefined,
         clinicianNotes || undefined
       );
-      setActionSuccess(`Field ${decision.toLowerCase()}ed and incorporated.`);
-      setTimeout(() => setActionSuccess(null), 3000);
+      setActionSuccess(`Field successfully ${decision.toLowerCase()}ed and recorded.`);
+      setTimeout(() => setActionSuccess(null), 4000);
       setModifyingField(null);
       await loadDoc();
       await refreshPatientData();
     } catch (err: any) {
-      alert(`Error reviewing field: ${err.message}`);
+      const msg = err.message || 'Action failed';
+      setActionError(`Review error: ${msg}`);
+      setTimeout(() => setActionError(null), 6000);
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleAcceptAll = async () => {
     if (!documentId) return;
+    setActionError(null);
+    setActionLoading(true);
     try {
-      await api.acceptAllFields(documentId);
-      setActionSuccess('All extracted fields accepted and digital twin updated.');
-      setTimeout(() => setActionSuccess(null), 3000);
+      const res = await api.acceptAllFields(documentId);
+      const countMsg = res?.accepted_count !== undefined
+        ? `${res.accepted_count} fields accepted (${res.skipped_rejected_count || 0} rejected preserved)`
+        : 'All eligible fields accepted';
+      setActionSuccess(`${countMsg} and incorporated into digital twin.`);
+      setTimeout(() => setActionSuccess(null), 4000);
       await loadDoc();
       await refreshPatientData();
     } catch (err: any) {
-      alert(`Error accepting all fields: ${err.message}`);
+      const msg = err.message || 'Failed to accept fields.';
+      setActionError(`Accept all error: ${msg}`);
+      setTimeout(() => setActionError(null), 6000);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'ACCEPTED':
+        return <Badge variant="success">ACCEPTED</Badge>;
+      case 'REJECTED':
+        return <Badge variant="danger">REJECTED</Badge>;
+      case 'MODIFIED':
+        return <Badge variant="warning">MODIFIED</Badge>;
+      default:
+        return <Badge variant="primary">{status}</Badge>;
     }
   };
 
   if (!document) {
     return (
-      <div className="p-8 text-center glass-panel">
-        <AlertCircle className="w-10 h-10 text-[#A5B3C8] mx-auto mb-2" />
-        <p className="text-sm text-[#A5B3C8]">Document not found or access restricted.</p>
-      </div>
+      <Card>
+        <CardContent className="p-12 text-center">
+          <AlertCircle className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+          <p className="text-sm text-slate-600">Document not found or access restricted.</p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={() => navigate('/medical-records')}>
+            Return to Medical Records
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <div className="space-y-4">
-      {/* Top Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 glass-panel rounded-xl">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/medical-records')}
-            className="p-1.5 rounded-lg bg-[#142137] text-[#A5B3C8] hover:text-[#F4F7FC]"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-[#F4F7FC] truncate">{document.filename}</h2>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-[#5BE7E8]/10 text-[#5BE7E8]">
-                {document.category}
-              </span>
-            </div>
-            <p className="text-[11px] text-[#A5B3C8]">
-              {document.report_date} | {document.source_institution} | AI Engine: {document.ai_provider}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {actionSuccess && (
-            <span className="text-xs font-medium text-[#43D6B0] flex items-center gap-1">
-              <CheckCheck className="w-4 h-4" /> {actionSuccess}
-            </span>
-          )}
-          {isClinician && (
-            <button
-              onClick={handleAcceptAll}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#43D6B0]/20 hover:bg-[#43D6B0]/30 text-[#43D6B0] border border-[#43D6B0]/30 text-xs font-semibold transition-colors"
+      {/* Top Header Card */}
+      <Card>
+        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<ChevronLeft className="w-4 h-4" />}
+              onClick={() => navigate('/medical-records')}
             >
-              <CheckCheck className="w-3.5 h-3.5" />
-              <span>Accept All Fields</span>
-            </button>
-          )}
-          <a
-            href={`/api/v1/documents/${document.id}/download`}
-            target="_blank"
-            rel="noreferrer"
-            className="p-2 rounded-lg bg-[#142137] hover:bg-[#192a45] text-[#A5B3C8] hover:text-[#F4F7FC] text-xs transition-colors"
-            title="Download Original"
-          >
-            <Download className="w-4 h-4" />
-          </a>
-        </div>
-      </div>
+              Back
+            </Button>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900 truncate">{document.filename}</h2>
+                <Badge variant="neutral">{document.category}</Badge>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {document.report_date} • {document.source_institution} • AI Engine: {document.ai_provider}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isClinician && (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<CheckCheck className="w-4 h-4" />}
+                onClick={handleAcceptAll}
+                disabled={actionLoading}
+                isLoading={actionLoading}
+              >
+                Accept All Fields
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Download className="w-4 h-4" />}
+              onClick={async () => {
+                try {
+                  await api.downloadDocument(document.id, document.filename);
+                } catch (err: any) {
+                  alert(err.message || 'Download failed');
+                }
+              }}
+            >
+              Download
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Accessible Notification Banners */}
+      {actionError && (
+        <Alert
+          variant="danger"
+          title="Review Action Error"
+          description={actionError}
+        />
+      )}
+      {actionSuccess && (
+        <Alert
+          variant="success"
+          title="Action Completed"
+          description={actionSuccess}
+        />
+      )}
 
       {/* Dual Panel Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[680px]">
-        {/* Left Panel: Document Preview & Page Navigation */}
-        <div className="lg:col-span-7 glass-panel-elevated p-4 flex flex-col justify-between rounded-2xl relative overflow-hidden">
-          {/* Document Viewer Toolbar */}
-          <div className="flex items-center justify-between pb-3 border-b border-[rgba(166,190,220,0.1)] text-xs text-[#A5B3C8]">
-            <div className="flex items-center gap-2">
-              <span>Page {currentPage} of {document.page_count}</span>
-              <button
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="p-1 rounded bg-[#101A2B] disabled:opacity-30 hover:text-[#F4F7FC]"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                disabled={currentPage >= document.page_count}
-                onClick={() => setCurrentPage((p) => Math.min(document.page_count, p + 1))}
-                className="p-1 rounded bg-[#101A2B] disabled:opacity-30 hover:text-[#F4F7FC]"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setZoomLevel((z) => Math.max(70, z - 10))}
-                className="p-1 rounded bg-[#101A2B] hover:text-[#F4F7FC]"
-              >
-                <ZoomOut className="w-4 h-4" />
-              </button>
-              <span className="font-mono text-[11px]">{zoomLevel}%</span>
-              <button
-                onClick={() => setZoomLevel((z) => Math.min(150, z + 10))}
-                className="p-1 rounded bg-[#101A2B] hover:text-[#F4F7FC]"
-              >
-                <ZoomIn className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Interactive Document Page Canvas */}
-          <div className="flex-1 my-3 bg-[#070B14] rounded-xl border border-[rgba(166,190,220,0.14)] p-6 overflow-auto relative flex flex-col items-center">
-            <div
-              style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
-              className="w-full max-w-xl bg-[#0B1220] border border-[rgba(166,190,220,0.2)] rounded-lg p-8 shadow-2xl space-y-4 text-xs font-mono transition-transform"
-            >
-              <div className="border-b border-[#5BE7E8]/30 pb-3 text-center">
-                <p className="font-bold text-[#F4F7FC] text-sm tracking-wide">
-                  ST. MARGARET MATERNAL-FETAL MEDICINE CENTER
-                </p>
-                <p className="text-[10px] text-[#5BE7E8] uppercase mt-0.5">
-                  Longitudinal Antenatal Surveillance Report — Page {currentPage}
-                </p>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[640px]">
+        {/* Left Panel: Document Viewer */}
+        <div className="lg:col-span-7 flex flex-col justify-between">
+          <Card className="flex-1 flex flex-col">
+            <CardHeader className="py-3 px-4 border-b border-slate-200 flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <span>Page {currentPage} of {document.page_count}</span>
+                <button
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  disabled={currentPage >= document.page_count}
+                  onClick={() => setCurrentPage((p) => Math.min(document.page_count, p + 1))}
+                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
 
-              {currentPage === 1 ? (
-                <div className="space-y-4 text-[#A5B3C8]">
-                  <div className="flex justify-between border-b border-[rgba(166,190,220,0.1)] pb-2 text-[11px]">
-                    <span>SUBJECT: MAYA LIN (MRN-PT-2026-001)</span>
-                    <span>GA: 31w 4d | DATE: 2026-09-15</span>
-                  </div>
+              <div className="flex items-center gap-2 text-xs">
+                <button
+                  onClick={() => setZoomLevel((z) => Math.max(70, z - 10))}
+                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <span className="font-mono text-xs text-slate-700">{zoomLevel}%</span>
+                <button
+                  onClick={() => setZoomLevel((z) => Math.min(150, z + 10))}
+                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+              </div>
+            </CardHeader>
 
-                  {/* Section 1: Hemodynamics Highlight Block */}
-                  <div
-                    className={`p-3 rounded-lg border transition-all ${
-                      selectedField?.category === 'blood_pressure'
-                        ? 'border-[#5BE7E8] bg-[#5BE7E8]/10 text-[#F4F7FC] ring-2 ring-[#5BE7E8]/40'
-                        : 'border-transparent bg-[#101A2B]/50'
-                    }`}
-                  >
-                    <p className="font-bold text-[#F4F7FC] text-[11px] mb-1">1. HEMODYNAMIC OBSERVATIONS</p>
-                    <p className="text-sm font-bold text-[#5BE7E8]">Blood Pressure: 142/92 mmHg</p>
-                    <p className="text-[10px] text-[#A5B3C8] mt-0.5">Measurement Context: Sitting, Right Arm, Automated Sphygmomanometer</p>
-                  </div>
-
-                  {/* Section 2: Urinalysis Highlight Block */}
-                  <div
-                    className={`p-3 rounded-lg border transition-all ${
-                      selectedField?.category === 'urine_protein'
-                        ? 'border-[#5BE7E8] bg-[#5BE7E8]/10 text-[#F4F7FC] ring-2 ring-[#5BE7E8]/40'
-                        : 'border-transparent bg-[#101A2B]/50'
-                    }`}
-                  >
-                    <p className="font-bold text-[#F4F7FC] text-[11px] mb-1">2. POINT-OF-CARE URINALYSIS</p>
-                    <p className="text-sm font-bold text-[#E9B96E]">Urine Protein: 1+ (dipstick automated reader)</p>
-                    <p className="text-xs font-bold text-[#F4F7FC]">Protein/Creatinine Ratio (UPCR): 0.34 mg/mg [Ref &lt; 0.30]</p>
-                  </div>
-
-                  {/* Section 3: Laboratory Highlight Block */}
-                  <div
-                    className={`p-3 rounded-lg border transition-all ${
-                      selectedField?.category === 'laboratory'
-                        ? 'border-[#5BE7E8] bg-[#5BE7E8]/10 text-[#F4F7FC] ring-2 ring-[#5BE7E8]/40'
-                        : 'border-transparent bg-[#101A2B]/50'
-                    }`}
-                  >
-                    <p className="font-bold text-[#F4F7FC] text-[11px] mb-1">3. COMPLETE BLOOD & BIOCHEMISTRY PANEL</p>
-                    <p>Platelet Count: 168 x10^3/uL [Ref: 150 - 450]</p>
-                    <p>AST (SGOT): 32 U/L | ALT (SGPT): 28 U/L</p>
-                    <p>Serum Creatinine: 0.78 mg/dL [Ref: 0.40 - 0.90]</p>
-                  </div>
+            {/* Document Canvas */}
+            <div className="flex-1 p-6 bg-slate-100 overflow-auto flex flex-col items-center">
+              <div
+                style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
+                className="w-full max-w-xl bg-white border border-slate-300 rounded-lg p-8 shadow-sm space-y-4 text-xs font-mono transition-transform"
+              >
+                <div className="border-b border-slate-200 pb-3 text-center">
+                  <p className="font-bold text-slate-900 text-sm tracking-wide">
+                    ST. MARGARET MATERNAL-FETAL MEDICINE CENTER
+                  </p>
+                  <p className="text-xs text-sky-700 uppercase font-semibold mt-0.5">
+                    Longitudinal Antenatal Surveillance Report — Page {currentPage}
+                  </p>
                 </div>
-              ) : (
-                <div className="space-y-4 text-[#A5B3C8]">
-                  <p className="font-bold text-[#F4F7FC] text-[11px]">HISTORICAL TREND LOGS & SIGNATURE</p>
-                  <p>2026-07-20 (GA 24.0w): BP 122/78 mmHg | Protein: Neg | Platelets: 210k</p>
-                  <p>2026-08-18 (GA 28.1w): BP 132/84 mmHg | Protein: Trace | Platelets: 192k</p>
-                  <p>2026-09-15 (GA 31.4w): BP 142/92 mmHg | Protein: 1+ | Platelets: 168k</p>
-                  <div className="pt-8 border-t border-[rgba(166,190,220,0.1)] text-[10px]">
-                    Physician Signature: Dr. Elena Vance, MD, FACOG
+
+                {currentPage === 1 ? (
+                  <div className="space-y-4 text-slate-700">
+                    <div className="flex justify-between border-b border-slate-100 pb-2 text-xs">
+                      <span>SUBJECT: MAYA LIN (MRN-PT-2026-001)</span>
+                      <span>GA: 31w 4d | DATE: 2026-09-15</span>
+                    </div>
+
+                    {/* Section 1: Hemodynamics Highlight Block */}
+                    <div
+                      className={`p-3 rounded-lg border transition-all ${
+                        selectedField?.category === 'blood_pressure'
+                          ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-500/20'
+                          : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      <p className="font-bold text-slate-900 text-xs mb-1">1. HEMODYNAMIC OBSERVATIONS</p>
+                      <p className="text-sm font-bold text-sky-900">Blood Pressure: 142/92 mmHg</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Measurement Context: Sitting, Right Arm, Automated Sphygmomanometer
+                      </p>
+                    </div>
+
+                    {/* Section 2: Urinalysis Highlight Block */}
+                    <div
+                      className={`p-3 rounded-lg border transition-all ${
+                        selectedField?.category === 'urine_protein'
+                          ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-500/20'
+                          : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      <p className="font-bold text-slate-900 text-xs mb-1">2. POINT-OF-CARE URINALYSIS</p>
+                      <p className="text-sm font-bold text-amber-800">Urine Protein: 1+ (dipstick automated reader)</p>
+                      <p className="text-xs font-bold text-slate-800">Protein/Creatinine Ratio (UPCR): 0.34 mg/mg [Ref &lt; 0.30]</p>
+                    </div>
+
+                    {/* Section 3: Laboratory Highlight Block */}
+                    <div
+                      className={`p-3 rounded-lg border transition-all ${
+                        selectedField?.category === 'laboratory'
+                          ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-500/20'
+                          : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      <p className="font-bold text-slate-900 text-xs mb-1">3. COMPLETE BLOOD & BIOCHEMISTRY PANEL</p>
+                      <p>Platelet Count: 168 x10^3/uL [Ref: 150 - 450]</p>
+                      <p>AST (SGOT): 32 U/L | ALT (SGPT): 28 U/L</p>
+                      <p>Serum Creatinine: 0.78 mg/dL [Ref: 0.40 - 0.90]</p>
+                    </div>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="space-y-4 text-slate-700">
+                    <p className="font-bold text-slate-900 text-xs">HISTORICAL TREND LOGS & SIGNATURE</p>
+                    <p>2026-07-20 (GA 24.0w): BP 122/78 mmHg | Protein: Neg | Platelets: 210k</p>
+                    <p>2026-08-18 (GA 28.1w): BP 132/84 mmHg | Protein: Trace | Platelets: 192k</p>
+                    <p>2026-09-15 (GA 31.4w): BP 142/92 mmHg | Protein: 1+ | Platelets: 168k</p>
+                    <div className="pt-8 border-t border-slate-200 text-xs">
+                      Physician Signature: Dr. Elena Vance, MD, FACOG
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between text-[11px] text-[#A5B3C8] pt-2 border-t border-[rgba(166,190,220,0.1)]">
-            <span>PyMuPDF Text & Vector Coordinates Preserved</span>
-            <span className="text-[#5BE7E8] font-mono">
-              {selectedField ? `Focus: ${selectedField.field_name} (Page ${selectedField.source_page})` : 'Select a field to locate'}
-            </span>
-          </div>
+            <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+              <span>PyMuPDF Text & Vector Coordinates Preserved</span>
+              <span className="font-mono text-sky-700 font-medium">
+                {selectedField ? `Focus: ${selectedField.field_name} (Page ${selectedField.source_page})` : 'Select a field to locate'}
+              </span>
+            </div>
+          </Card>
         </div>
 
-        {/* Right Panel: Extracted Fields & AI Evidence Grounding */}
-        <div className="lg:col-span-5 glass-panel p-5 flex flex-col justify-between rounded-2xl">
-          <div>
-            {/* View Switching Tabs */}
-            <div className="flex items-center gap-1 p-1 bg-[#0B1220] rounded-xl border border-[rgba(166,190,220,0.14)] mb-4">
-              <button
-                onClick={() => setActiveTab('FIELDS')}
-                className={`flex-1 py-1.5 text-xs rounded-lg font-medium transition-all ${
-                  activeTab === 'FIELDS'
-                    ? 'bg-[#5BE7E8]/20 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                    : 'text-[#A5B3C8] hover:text-[#F4F7FC]'
-                }`}
-              >
-                Extracted Fields ({document.extracted_fields.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('SUMMARY')}
-                className={`flex-1 py-1.5 text-xs rounded-lg font-medium transition-all ${
-                  activeTab === 'SUMMARY'
-                    ? 'bg-[#5BE7E8]/20 text-[#5BE7E8] border border-[#5BE7E8]/30 shadow-sm'
-                    : 'text-[#A5B3C8] hover:text-[#F4F7FC]'
-                }`}
-              >
-                AI Clinical Summary
-              </button>
-            </div>
+        {/* Right Panel: Extracted Fields & Review */}
+        <div className="lg:col-span-5 flex flex-col justify-between">
+          <Card className="flex-1 flex flex-col">
+            <CardHeader className="pb-3 border-b border-slate-200">
+              <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200">
+                <button
+                  onClick={() => setActiveTab('FIELDS')}
+                  className={`flex-1 py-1.5 text-xs rounded-md font-medium transition-all ${
+                    activeTab === 'FIELDS'
+                      ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Extracted Fields ({document.extracted_fields.length})
+                </button>
+                <button
+                  onClick={() => setActiveTab('SUMMARY')}
+                  className={`flex-1 py-1.5 text-xs rounded-md font-medium transition-all ${
+                    activeTab === 'SUMMARY'
+                      ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  AI Clinical Summary
+                </button>
+              </div>
+            </CardHeader>
 
-            {/* Tab 1: Extracted Fields List with Verification Actions */}
-            {activeTab === 'FIELDS' && (
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                {document.extracted_fields.map((f) => (
-                  <div
-                    key={f.id}
-                    onClick={() => {
-                      setSelectedField(f);
-                      setCurrentPage(f.source_page || 1);
-                    }}
-                    className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                      selectedField?.id === f.id
-                        ? 'border-[#5BE7E8] bg-[#142137] shadow-lg shadow-[#5BE7E8]/5'
-                        : 'border-[rgba(166,190,220,0.1)] bg-[#0B1220]/60 hover:bg-[#101A2B]'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#A5B3C8]">
-                        {f.category.replace('_', ' ')}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                          f.review_status === 'ACCEPTED'
-                            ? 'bg-[#43D6B0]/20 text-[#43D6B0]'
-                            : f.review_status === 'REJECTED'
-                            ? 'bg-[#F43F5E]/20 text-[#F43F5E]'
-                            : f.review_status === 'MODIFIED'
-                            ? 'bg-[#E9B96E]/20 text-[#E9B96E]'
-                            : 'bg-[#5BE7E8]/15 text-[#5BE7E8]'
+            <CardContent className="flex-1 p-4 overflow-y-auto max-h-[540px]">
+              {activeTab === 'FIELDS' ? (
+                <div className="space-y-3">
+                  {document.extracted_fields.map((f) => {
+                    const isSelected = selectedField?.id === f.id;
+                    return (
+                      <div
+                        key={f.id}
+                        onClick={() => {
+                          setSelectedField(f);
+                          setCurrentPage(f.source_page || 1);
+                        }}
+                        className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-sky-500 bg-sky-50/60 shadow-sm ring-1 ring-sky-500/20'
+                            : 'border-slate-200 bg-white hover:bg-slate-50'
                         }`}
                       >
-                        {f.review_status}
-                      </span>
-                    </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+                            {f.category.replace('_', ' ')}
+                          </span>
+                          {getStatusBadge(f.review_status)}
+                        </div>
 
-                    <div className="flex items-baseline justify-between mt-1">
-                      <span className="text-xs font-semibold text-[#F4F7FC]">{f.field_name}</span>
-                      <span className="text-sm font-bold font-mono text-[#5BE7E8]">
-                        {f.clinician_correction || f.extracted_value}{' '}
-                        <span className="text-[10px] text-[#A5B3C8] font-normal">{f.unit || ''}</span>
-                      </span>
-                    </div>
+                        <div className="flex items-baseline justify-between mt-1">
+                          <span className="text-xs font-semibold text-slate-900">{f.field_name}</span>
+                          <span className="text-sm font-bold font-mono text-sky-800">
+                            {f.clinician_correction || f.extracted_value}{' '}
+                            <span className="text-xs text-slate-500 font-normal">{f.unit || ''}</span>
+                          </span>
+                        </div>
 
-                    {f.source_text && (
-                      <p className="text-[11px] text-[#A5B3C8] mt-1.5 italic bg-[#070B14]/60 p-1.5 rounded border border-[rgba(166,190,220,0.06)] truncate">
-                        "{f.source_text}"
-                      </p>
-                    )}
+                        {f.source_text && (
+                          <p className="text-xs text-slate-600 mt-1.5 italic bg-slate-50 p-2 rounded border border-slate-200 truncate">
+                            "{f.source_text}"
+                          </p>
+                        )}
 
-                    {/* Clinician Review Buttons */}
-                    {isClinician && (
-                      <div className="mt-3 pt-2.5 border-t border-[rgba(166,190,220,0.1)] flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setModifyingField(f);
-                            setCorrectionValue(f.extracted_value);
-                          }}
-                          className="px-2 py-1 rounded bg-[#101A2B] hover:bg-[#142137] text-[#E9B96E] text-[11px] font-medium flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3 h-3" /> Modify
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleReview(f.id, 'REJECT');
-                          }}
-                          className="px-2 py-1 rounded bg-[#F43F5E]/10 hover:bg-[#F43F5E]/20 text-[#F43F5E] text-[11px] font-medium flex items-center gap-1"
-                        >
-                          <X className="w-3 h-3" /> Reject
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleReview(f.id, 'ACCEPT');
-                          }}
-                          className="px-2.5 py-1 rounded bg-[#43D6B0]/20 hover:bg-[#43D6B0]/30 text-[#43D6B0] text-[11px] font-bold flex items-center gap-1"
-                        >
-                          <Check className="w-3 h-3" /> Accept
-                        </button>
+                        {/* Clinician Review Buttons */}
+                        {isClinician && (
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs py-1 h-7"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setModifyingField(f);
+                                setCorrectionValue(f.extracted_value);
+                              }}
+                              icon={<Edit2 className="w-3 h-3 text-amber-600" />}
+                            >
+                              Modify
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs py-1 h-7 text-rose-600 hover:bg-rose-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleReview(f.id, 'REJECT');
+                              }}
+                              icon={<X className="w-3 h-3 text-rose-600" />}
+                            >
+                              Reject
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs py-1 h-7 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleReview(f.id, 'ACCEPT');
+                              }}
+                              icon={<Check className="w-3 h-3 text-emerald-600" />}
+                            >
+                              Accept
+                            </Button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Tab 2: AI Clinical Summary */}
-            {activeTab === 'SUMMARY' && document.summary && (
-              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1 text-xs">
-                <div className="p-3 bg-[#0B1220]/70 rounded-xl border border-[rgba(166,190,220,0.1)]">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#5BE7E8] block mb-1">
-                    Factual Summary
-                  </span>
-                  <p className="text-[#F4F7FC] leading-relaxed">{document.summary.factual_summary}</p>
+                    );
+                  })}
                 </div>
+              ) : (
+                <div className="space-y-4 text-xs">
+                  {document.summary ? (
+                    <>
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-sky-800 font-bold block mb-1">
+                          Factual Summary
+                        </span>
+                        <p className="text-slate-800 leading-relaxed">{document.summary.factual_summary}</p>
+                      </div>
 
-                <div className="p-3 bg-[#0B1220]/70 rounded-xl border border-[rgba(166,190,220,0.1)]">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#43D6B0] block mb-1">
-                    Key Findings
-                  </span>
-                  <p className="text-[#F4F7FC] leading-relaxed">{document.summary.key_findings}</p>
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-800 font-bold block mb-1">
+                          Key Findings
+                        </span>
+                        <p className="text-slate-800 leading-relaxed">{document.summary.key_findings}</p>
+                      </div>
+
+                      {document.summary.changes_vs_prior && (
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-700 font-bold block mb-1">
+                            Trajectory vs Prior Reports
+                          </span>
+                          <p className="text-slate-600 leading-relaxed">{document.summary.changes_vs_prior}</p>
+                        </div>
+                      )}
+
+                      {document.summary.clinician_review_prompts && (
+                        <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-amber-800 font-bold block mb-1">
+                            Questions for Clinician Review
+                          </span>
+                          <p className="text-amber-950 leading-relaxed">{document.summary.clinician_review_prompts}</p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="p-6 text-center text-slate-500">No AI clinical summary generated.</div>
+                  )}
                 </div>
-
-                {document.summary.changes_vs_prior && (
-                  <div className="p-3 bg-[#0B1220]/70 rounded-xl border border-[rgba(166,190,220,0.1)]">
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#628BFF] block mb-1">
-                      Trajectory vs Prior Reports
-                    </span>
-                    <p className="text-[#A5B3C8] leading-relaxed">{document.summary.changes_vs_prior}</p>
-                  </div>
-                )}
-
-                {document.summary.clinician_review_prompts && (
-                  <div className="p-3 bg-[#E9B96E]/10 rounded-xl border border-[#E9B96E]/30">
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#E9B96E] block mb-1">
-                      Questions for Clinician Review
-                    </span>
-                    <p className="text-[#F4F7FC] leading-relaxed">{document.summary.clinician_review_prompts}</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
 
       {/* Modify Field Modal */}
-      {modifyingField && (
-        <div className="fixed inset-0 z-50 bg-[#070B14]/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#101A2B] border border-[#5BE7E8]/40 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-[#F4F7FC]">
-              Correct Extracted Value: {modifyingField.field_name}
-            </h3>
-            <p className="text-xs text-[#A5B3C8]">
-              Original extracted value: <strong>{modifyingField.extracted_value} {modifyingField.unit}</strong>
-            </p>
+      <Modal
+        isOpen={!!modifyingField}
+        onClose={() => setModifyingField(null)}
+        title={`Correct Extracted Value: ${modifyingField?.field_name}`}
+        description={`Original extracted value: ${modifyingField?.extracted_value} ${modifyingField?.unit || ''}`}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModifyingField(null)}
+              disabled={actionLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => modifyingField && handleReview(modifyingField.id, 'MODIFY')}
+              disabled={actionLoading}
+              isLoading={actionLoading}
+            >
+              Save Correction
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">
+              Corrected Value
+            </label>
+            <input
+              type="text"
+              value={correctionValue}
+              onChange={(e) => setCorrectionValue(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+            />
+          </div>
 
-            <div>
-              <label className="text-[10px] uppercase font-mono tracking-wider text-[#A5B3C8] block mb-1">
-                Corrected Value
-              </label>
-              <input
-                type="text"
-                value={correctionValue}
-                onChange={(e) => setCorrectionValue(e.target.value)}
-                className="w-full bg-[#0B1220] border border-[rgba(166,190,220,0.2)] rounded-lg px-3 py-2 text-xs text-[#F4F7FC]"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] uppercase font-mono tracking-wider text-[#A5B3C8] block mb-1">
-                Clinician Note / Reason for Correction
-              </label>
-              <textarea
-                value={clinicianNotes}
-                onChange={(e) => setClinicianNotes(e.target.value)}
-                placeholder="e.g. Corrected to sitting repeat BP reading..."
-                rows={3}
-                className="w-full bg-[#0B1220] border border-[rgba(166,190,220,0.2)] rounded-lg px-3 py-2 text-xs text-[#F4F7FC]"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setModifyingField(null)}
-                className="px-3 py-1.5 rounded-lg bg-[#142137] text-xs text-[#A5B3C8]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleReview(modifyingField.id, 'MODIFY')}
-                className="px-4 py-1.5 rounded-lg bg-[#5BE7E8] text-[#070B14] font-semibold text-xs"
-              >
-                Save Correction
-              </button>
-            </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">
+              Clinician Note / Reason for Correction
+            </label>
+            <textarea
+              value={clinicianNotes}
+              onChange={(e) => setClinicianNotes(e.target.value)}
+              placeholder="e.g. Corrected to sitting repeat BP reading..."
+              rows={3}
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+            />
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 };

@@ -1,23 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  --bg-primary: #070B14;
-  --bg-secondary: #0B1220;
-  --surface-primary: #101A2B;
-  --surface-secondary: #142137;
-  --surface-tertiary: #192a45;
-  --text-primary: #F4F7FC;
-  --text-secondary: #A5B3C8;
-  --text-muted: #64748B;
-  --accent-cyan: #5BE7E8;
-  --accent-blue: #628BFF;
-  --accent-teal: #43D6B0;
-  --accent-amber: #E9B96E;
-  --accent-rose: #F43F5E;
-  --border-subtle: rgba(166, 190, 220, 0.14);
-  --border-focus: rgba(91, 231, 232, 0.4);
-  --glow-cyan: rgba(91, 231, 232, 0.15);
-  --glow-blue: rgba(98, 139, 255, 0.15);
+  /* Clean Clinical SaaS Design Tokens */
+  --bg-primary: #F8FAFC;       /* Slate 50: warm light page background */
+  --bg-secondary: #FFFFFF;     /* Pure white for card surfaces */
+  --surface-primary: #FFFFFF;
+  --surface-secondary: #F1F5F9; /* Slate 100: subtle sub-surfaces */
+  --surface-tertiary: #E2E8F0;  /* Slate 200: dividers and borders */
+  
+  --text-primary: #0F172A;      /* Slate 900: high-contrast deep navy text */
+  --text-secondary: #475569;    /* Slate 600: clear secondary labels */
+  --text-muted: #64748B;        /* Slate 500: meta descriptions */
+  
+  --accent-primary: #0284C7;    /* Sky 600: professional clinical blue */
+  --accent-teal: #0D9488;       /* Teal 600: health & biomarker accent */
+  --accent-blue: #2563EB;       /* Blue 600 */
+  --accent-amber: #D97706;      /* Amber 600: cautionary clinical warning */
+  --accent-rose: #DC2626;       /* Red 600: urgent clinical alert */
+  --accent-emerald: #059669;    /* Green 600: normal clinical status */
+  
+  --border-subtle: #E2E8F0;     /* Slate 200 */
+  --border-focus: #0284C7;      /* Sky 600 */
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  --shadow-elevated: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
 }
 
 * {
@@ -35,42 +40,28 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Technical clinical grid background */
+/* Subtle, clean clinical grid background (light mode) */
 .grid-bg {
+  background-color: var(--bg-primary);
   background-size: 32px 32px;
   background-image: 
-    linear-gradient(to right, rgba(91, 231, 232, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(91, 231, 232, 0.03) 1px, transparent 1px);
+    linear-gradient(to right, rgba(226, 232, 240, 0.5) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(226, 232, 240, 0.5) 1px, transparent 1px);
 }
 
-/* Glass card styling */
+/* Clinical Content Surfaces */
 .glass-panel {
-  background: rgba(16, 26, 43, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border-subtle);
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
   border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
 }
 
 .glass-panel-elevated {
-  background: rgba(20, 33, 55, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(166, 190, 220, 0.2);
-  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(91, 231, 232, 0.08);
-}
-
-/* Glowing accent effects */
-.glow-cyan-sm {
-  box-shadow: 0 0 15px -3px rgba(91, 231, 232, 0.25);
-}
-
-.glow-blue-sm {
-  box-shadow: 0 0 15px -3px rgba(98, 139, 255, 0.25);
-}
-
-.glow-amber-sm {
-  box-shadow: 0 0 15px -3px rgba(233, 185, 110, 0.25);
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 14px;
+  box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
 }
 
 /* Tabular numerals for medical statistics */
@@ -78,37 +69,29 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Sleek custom scrollbars */
+/* Clean, modern scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(7, 11, 20, 0.6);
+  background: #F1F5F9;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(166, 190, 220, 0.2);
+  background: #CBD5E1;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(91, 231, 232, 0.4);
+  background: #94A3B8;
 }
 
-/* Pulse animation for 3D state sync */
-@keyframes pulseGlow {
-  0%, 100% {
-    opacity: 0.6;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
-}
-
-.pulse-glow {
-  animation: pulseGlow 3s ease-in-out infinite;
+/* Form input focus styles */
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
 }

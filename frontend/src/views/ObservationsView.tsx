@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api, ClinicalObservation } from '../api/client';
 import {
@@ -10,6 +10,7 @@ import {
   Tooltip,
   CartesianGrid,
   ReferenceLine,
+  Legend
 } from 'recharts';
 import {
   Activity,
@@ -19,13 +20,25 @@ import {
   Clock,
   CheckCircle2,
   Calendar,
+  Filter,
+  Search,
+  HeartPulse,
+  Droplets,
+  FlaskConical
 } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { Modal } from '../components/ui/Modal';
+import { PageHeader } from '../components/ui/PageHeader';
 
 export const ObservationsView: React.FC = () => {
   const { selectedPatient, selectedPatientId, refreshPatientData } = useAuth();
   const [observations, setObservations] = useState<ClinicalObservation[]>([]);
   const [trajectories, setTrajectories] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Manual observation modal state
   const [modalOpen, setModalOpen] = useState<boolean>(false);
@@ -34,6 +47,7 @@ export const ObservationsView: React.FC = () => {
   const [valueNum, setValueNum] = useState<number>(125);
   const [unit, setUnit] = useState<string>('mmHg');
   const [gaInput, setGaInput] = useState<number>(31.5);
+  const [submitting, setSubmitting] = useState<boolean>(false);
 
   const loadData = async () => {
     if (!selectedPatientId) return;
@@ -56,8 +70,10 @@ export const ObservationsView: React.FC = () => {
     loadData();
   }, [selectedPatientId]);
 
-  const handleCreateObservation = async () => {
+  const handleCreateObservation = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!selectedPatientId) return;
+    setSubmitting(true);
     try {
       await api.createObservation(selectedPatientId, {
         observation_type: testType,
@@ -72,255 +88,297 @@ export const ObservationsView: React.FC = () => {
       await loadData();
     } catch (err: any) {
       alert(`Error recording observation: ${err.message}`);
+    } finally {
+      setSubmitting(false);
     }
   };
 
+  const filteredObservations = useMemo(() => {
+    return observations.filter((obs) => {
+      if (typeFilter !== 'all' && obs.observation_type !== typeFilter) return false;
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const matchesName = obs.test_name.toLowerCase().includes(query);
+        const matchesType = obs.observation_type.toLowerCase().includes(query);
+        const matchesVal = (obs.value_text || `${obs.value_numeric}`).toLowerCase().includes(query);
+        if (!matchesName && !matchesType && !matchesVal) return false;
+      }
+      return true;
+    });
+  }, [observations, typeFilter, searchQuery]);
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 glass-panel rounded-2xl">
+      {/* Page Header */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-mono text-[#5BE7E8] uppercase tracking-wider block">
-            LONGITUDINAL CLINICAL TRAJECTORIES
-          </span>
-          <h2 className="text-2xl font-bold text-[#F4F7FC] mt-1">Observations & Hemodynamic Trends</h2>
-          <p className="text-xs text-[#A5B3C8] mt-0.5">
-            Normalized clinical time-series for {selectedPatient?.first_name} {selectedPatient?.last_name}.
+          <div className="flex items-center gap-2 text-xs font-semibold text-sky-700 uppercase tracking-wide">
+            <Activity className="w-4 h-4" />
+            <span>Longitudinal Clinical Time-Series</span>
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mt-1">Observations & Physiological Trends</h2>
+          <p className="text-xs md:text-sm text-slate-500 mt-0.5">
+            Verified maternal trajectory data for {selectedPatient?.first_name} {selectedPatient?.last_name}.
           </p>
         </div>
 
-        <button
-          onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#5BE7E8] to-[#43D6B0] hover:opacity-95 text-[#070B14] font-semibold text-xs shadow-lg shadow-[#5BE7E8]/20 transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Record New Measurement</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setModalOpen(true)}
+          >
+            <Plus className="w-4 h-4 text-white" />
+            <span>Record Clinical Observation</span>
+          </Button>
+        </div>
       </div>
 
-      {/* Chart 1: Blood Pressure & MAP Trajectory */}
-      <div className="glass-panel-elevated p-6 rounded-2xl">
-        <div className="flex items-center justify-between mb-4">
+      {/* Chart: Blood Pressure & MAP Longitudinal Trajectory */}
+      <Card>
+        <CardHeader className="flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h3 className="text-base font-bold text-[#F4F7FC] flex items-center gap-2">
-              <Activity className="w-4 h-4 text-[#5BE7E8]" />
-              Longitudinal Hemodynamic Trajectory (SBP / DBP / MAP)
-            </h3>
-            <p className="text-xs text-[#A5B3C8]">
-              Plotted against gestational age (weeks). Stage 1 threshold marked at 140 mmHg.
-            </p>
+            <div className="flex items-center gap-2">
+              <HeartPulse className="w-4 h-4 text-sky-600" />
+              <CardTitle>Longitudinal Hemodynamic Trajectory (SBP / DBP / MAP)</CardTitle>
+            </div>
+            <CardDescription>
+              Progression over gestational age (weeks). Clinical stage 1 hypertension threshold marked at 140/90 mmHg.
+            </CardDescription>
           </div>
-          <div className="flex items-center gap-4 text-xs font-mono">
-            <span className="flex items-center gap-1.5 text-[#F43F5E]">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#F43F5E]" /> SBP
+
+          <div className="flex items-center gap-3 text-xs font-mono">
+            <span className="flex items-center gap-1.5 text-rose-600 font-semibold">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-600" /> Systolic
             </span>
-            <span className="flex items-center gap-1.5 text-[#5BE7E8]">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#5BE7E8]" /> DBP
+            <span className="flex items-center gap-1.5 text-sky-600 font-semibold">
+              <span className="w-2.5 h-2.5 rounded-full bg-sky-600" /> Diastolic
             </span>
-            <span className="flex items-center gap-1.5 text-[#E9B96E]">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#E9B96E]" /> MAP
+            <span className="flex items-center gap-1.5 text-amber-600 font-semibold">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-600" /> MAP
             </span>
           </div>
-        </div>
+        </CardHeader>
 
-        <div className="h-72 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={trajectories} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(166,190,220,0.1)" />
-              <XAxis
-                dataKey="gestational_age_weeks"
-                stroke="#A5B3C8"
-                tickFormatter={(val) => `${val}w`}
-                fontSize={11}
-              />
-              <YAxis domain={[60, 170]} stroke="#A5B3C8" fontSize={11} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#0B1220',
-                  borderColor: 'rgba(166,190,220,0.2)',
-                  borderRadius: '8px',
-                  color: '#F4F7FC',
-                  fontSize: '12px',
-                }}
-              />
-              <ReferenceLine y={140} stroke="#F43F5E" strokeDasharray="4 4" label={{ value: 'Hypertensive 140', fill: '#F43F5E', fontSize: 10 }} />
-              <ReferenceLine y={90} stroke="#E9B96E" strokeDasharray="4 4" label={{ value: 'Diastolic 90', fill: '#E9B96E', fontSize: 10 }} />
-              <Line type="monotone" dataKey="sbp" stroke="#F43F5E" strokeWidth={2.5} dot={{ r: 4, fill: '#F43F5E' }} name="Systolic BP" />
-              <Line type="monotone" dataKey="dbp" stroke="#5BE7E8" strokeWidth={2.5} dot={{ r: 4, fill: '#5BE7E8' }} name="Diastolic BP" />
-              <Line type="monotone" dataKey="map" stroke="#E9B96E" strokeWidth={2} strokeDasharray="2 2" dot={{ r: 3, fill: '#E9B96E' }} name="MAP" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Grid: Platelets and Transaminases Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Platelets Chart */}
-        <div className="glass-panel p-6 rounded-2xl">
-          <h3 className="text-sm font-bold text-[#F4F7FC] mb-2 flex items-center gap-2">
-            Platelet Trajectory (10^3/uL)
-          </h3>
-          <p className="text-[11px] text-[#A5B3C8] mb-4">Thrombocytopenia threshold at &lt; 150k</p>
-          <div className="h-56 w-full">
+        <CardContent>
+          <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trajectories} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(166,190,220,0.1)" />
-                <XAxis dataKey="gestational_age_weeks" stroke="#A5B3C8" tickFormatter={(v) => `${v}w`} fontSize={10} />
-                <YAxis domain={[120, 260]} stroke="#A5B3C8" fontSize={10} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#0B1220', borderColor: 'rgba(166,190,220,0.2)', fontSize: '11px' }}
+              <LineChart data={trajectories} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                <XAxis
+                  dataKey="gestational_age_weeks"
+                  stroke="#64748B"
+                  tickFormatter={(val) => `${val}w`}
+                  fontSize={11}
                 />
-                <ReferenceLine y={150} stroke="#F43F5E" strokeDasharray="3 3" label={{ value: '150k ref', fill: '#F43F5E', fontSize: 9 }} />
-                <Line type="monotone" dataKey="platelets" stroke="#43D6B0" strokeWidth={2} dot={{ r: 4, fill: '#43D6B0' }} name="Platelets" />
+                <YAxis domain={[50, 180]} stroke="#64748B" fontSize={11} unit=" mmHg" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#CBD5E1',
+                    borderRadius: '8px',
+                    color: '#0F172A',
+                    fontSize: '12px',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                  }}
+                />
+                <ReferenceLine y={140} stroke="#DC2626" strokeDasharray="4 4" label={{ value: 'Hypertensive 140', fill: '#DC2626', fontSize: 10 }} />
+                <ReferenceLine y={90} stroke="#D97706" strokeDasharray="4 4" label={{ value: 'Diastolic 90', fill: '#D97706', fontSize: 10 }} />
+                <Line type="monotone" dataKey="sbp" stroke="#DC2626" strokeWidth={2.5} dot={{ r: 4, fill: '#DC2626' }} name="Systolic BP" />
+                <Line type="monotone" dataKey="dbp" stroke="#0284C7" strokeWidth={2.5} dot={{ r: 4, fill: '#0284C7' }} name="Diastolic BP" />
+                <Line type="monotone" dataKey="map" stroke="#D97706" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 3, fill: '#D97706' }} name="MAP" />
               </LineChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Liver Transaminases Chart */}
-        <div className="glass-panel p-6 rounded-2xl">
-          <h3 className="text-sm font-bold text-[#F4F7FC] mb-2 flex items-center gap-2">
-            Transaminases AST / ALT (U/L)
-          </h3>
-          <p className="text-[11px] text-[#A5B3C8] mb-4">Elevated threshold at &gt; 40 U/L</p>
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trajectories} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(166,190,220,0.1)" />
-                <XAxis dataKey="gestational_age_weeks" stroke="#A5B3C8" tickFormatter={(v) => `${v}w`} fontSize={10} />
-                <YAxis domain={[10, 60]} stroke="#A5B3C8" fontSize={10} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#0B1220', borderColor: 'rgba(166,190,220,0.2)', fontSize: '11px' }}
-                />
-                <ReferenceLine y={40} stroke="#E9B96E" strokeDasharray="3 3" label={{ value: '40 U/L ref', fill: '#E9B96E', fontSize: 9 }} />
-                <Line type="monotone" dataKey="ast" stroke="#628BFF" strokeWidth={2} dot={{ r: 4 }} name="AST" />
-                <Line type="monotone" dataKey="alt" stroke="#5BE7E8" strokeWidth={2} dot={{ r: 4 }} name="ALT" />
-              </LineChart>
-            </ResponsiveContainer>
+      {/* Observation History Table Card */}
+      <Card>
+        <CardHeader className="flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <CardTitle>Verified Clinical Observations Log</CardTitle>
+            <CardDescription>
+              Detailed record of accepted clinical observations with gestational timestamping ({filteredObservations.length} items)
+            </CardDescription>
           </div>
-        </div>
-      </div>
 
-      {/* Observations Table */}
-      <div className="glass-panel p-6 rounded-2xl">
-        <h3 className="text-base font-bold text-[#F4F7FC] mb-4">Accepted Clinical Observations Log</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-[rgba(166,190,220,0.14)] text-[10px] font-mono uppercase text-[#A5B3C8]">
-                <th className="pb-3">Timestamp</th>
-                <th className="pb-3">Gestational Age</th>
-                <th className="pb-3">Measurement</th>
-                <th className="pb-3">Value</th>
-                <th className="pb-3">Source Provenance</th>
-                <th className="pb-3 text-right">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[rgba(166,190,220,0.08)]">
-              {observations.map((obs) => (
-                <tr key={obs.id} className="hover:bg-[#101A2B]/40 transition-colors">
-                  <td className="py-3 font-mono text-[#A5B3C8]">
-                    {new Date(obs.measurement_timestamp).toLocaleDateString()}
-                  </td>
-                  <td className="py-3 font-mono font-medium text-[#5BE7E8]">
-                    {obs.gestational_age_weeks}w
-                  </td>
-                  <td className="py-3 font-semibold text-[#F4F7FC]">{obs.test_name}</td>
-                  <td className="py-3 font-mono font-bold text-[#F4F7FC]">
-                    {obs.value_text || obs.value_numeric} {obs.unit || ''}
-                  </td>
-                  <td className="py-3 text-[#A5B3C8] capitalize">{obs.source_type.replace('_', ' ')}</td>
-                  <td className="py-3 text-right">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#43D6B0]/15 text-[#43D6B0]">
-                      {obs.review_status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Record Observation Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-[#070B14]/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#101A2B] border border-[#5BE7E8]/40 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-[#F4F7FC]">Record New Observation</h3>
-
-            <div>
-              <label className="text-[10px] uppercase font-mono tracking-wider text-[#A5B3C8] block mb-1">
-                Measurement Type
-              </label>
-              <select
-                value={testName}
-                onChange={(e) => {
-                  setTestName(e.target.value);
-                  if (e.target.value === 'systolic_bp' || e.target.value === 'diastolic_bp') {
-                    setUnit('mmHg');
-                    setTestType('blood_pressure');
-                  } else if (e.target.value === 'platelet_count') {
-                    setUnit('10^3/uL');
-                    setTestType('laboratory');
-                  } else if (e.target.value === 'proteinuria_dipstick') {
-                    setUnit('dipstick_grade');
-                    setTestType('urine_protein');
-                  }
-                }}
-                className="w-full bg-[#0B1220] border border-[rgba(166,190,220,0.2)] rounded-lg px-3 py-2 text-xs text-[#F4F7FC]"
-              >
-                <option value="systolic_bp">Systolic BP (mmHg)</option>
-                <option value="diastolic_bp">Diastolic BP (mmHg)</option>
-                <option value="platelet_count">Platelet Count (10^3/uL)</option>
-                <option value="ast">AST (U/L)</option>
-                <option value="alt">ALT (U/L)</option>
-                <option value="protein_creatinine_ratio">Protein/Creatinine Ratio (mg/mg)</option>
-              </select>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search test or value..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none"
+              />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
             </div>
 
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none"
+            >
+              <option value="all">All Observation Types</option>
+              <option value="blood_pressure">Blood Pressure</option>
+              <option value="laboratory">Laboratory Panels</option>
+              <option value="vital_signs">Vital Signs</option>
+              <option value="ultrasound">Ultrasound Biometry</option>
+            </select>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {filteredObservations.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-xs">
+              <p>No clinical observations match the selected criteria.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500 font-semibold text-[11px] uppercase">
+                    <th className="pb-2.5">Date / Time</th>
+                    <th className="pb-2.5">Gestational Age</th>
+                    <th className="pb-2.5">Observation / Test</th>
+                    <th className="pb-2.5">Observed Value</th>
+                    <th className="pb-2.5">Classification</th>
+                    <th className="pb-2.5">Evidence Source</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredObservations.map((obs) => (
+                    <tr key={obs.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2.5 font-mono text-slate-600">
+                        {new Date(obs.measurement_timestamp).toLocaleString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+                      <td className="py-2.5 font-mono font-semibold text-sky-700">
+                        {obs.gestational_age_weeks ? `${obs.gestational_age_weeks.toFixed(1)} wks` : 'Unassigned'}
+                      </td>
+                      <td className="py-2.5 font-medium text-slate-900 capitalize">
+                        {obs.test_name.replace(/_/g, ' ')}
+                      </td>
+                      <td className="py-2.5 font-bold font-mono text-slate-900">
+                        {obs.value_text || `${obs.value_numeric} ${obs.unit || ''}`}
+                      </td>
+                      <td className="py-2.5">
+                        <Badge
+                          variant={obs.is_abnormal ? 'danger' : 'success'}
+                          className="text-[10px]"
+                        >
+                          {obs.is_abnormal ? 'ABNORMAL' : 'NORMAL'}
+                        </Badge>
+                      </td>
+                      <td className="py-2.5">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 capitalize">
+                          {obs.source_type.replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Record Observation Modal */}
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Record New Clinical Observation"
+        subtitle="Manually add validated clinician or patient observations"
+        maxWidth="md"
+      >
+        <form onSubmit={handleCreateObservation} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] uppercase font-mono tracking-wider text-[#A5B3C8] block mb-1">
-                Value ({unit})
-              </label>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Observation Category</label>
+              <select
+                value={testType}
+                onChange={(e) => setTestType(e.target.value)}
+                className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+              >
+                <option value="blood_pressure">Blood Pressure</option>
+                <option value="laboratory">Laboratory</option>
+                <option value="vital_signs">Vital Signs</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Test Name</label>
+              <input
+                type="text"
+                value={testName}
+                onChange={(e) => setTestName(e.target.value)}
+                required
+                className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Numeric Value</label>
               <input
                 type="number"
                 step="0.1"
                 value={valueNum}
-                onChange={(e) => setValueNum(parseFloat(e.target.value))}
-                className="w-full bg-[#0B1220] border border-[rgba(166,190,220,0.2)] rounded-lg px-3 py-2 text-xs text-[#F4F7FC]"
+                onChange={(e) => setValueNum(parseFloat(e.target.value) || 0)}
+                required
+                className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
               />
             </div>
-
             <div>
-              <label className="text-[10px] uppercase font-mono tracking-wider text-[#A5B3C8] block mb-1">
-                Gestational Age (weeks)
-              </label>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Unit</label>
               <input
-                type="number"
-                step="0.1"
-                value={gaInput}
-                onChange={(e) => setGaInput(parseFloat(e.target.value))}
-                className="w-full bg-[#0B1220] border border-[rgba(166,190,220,0.2)] rounded-lg px-3 py-2 text-xs text-[#F4F7FC]"
+                type="text"
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
               />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setModalOpen(false)}
-                className="px-3 py-1.5 rounded-lg bg-[#142137] text-xs text-[#A5B3C8]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateObservation}
-                className="px-4 py-1.5 rounded-lg bg-[#5BE7E8] text-[#070B14] font-semibold text-xs"
-              >
-                Save & Update Twin
-              </button>
             </div>
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">Gestational Age at Measurement (Weeks)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={gaInput}
+              onChange={(e) => setGaInput(parseFloat(e.target.value) || 28)}
+              min="10"
+              max="45"
+              required
+              className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+            />
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={submitting}
+            >
+              Record Observation
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

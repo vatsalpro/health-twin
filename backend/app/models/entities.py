@@ -54,6 +54,10 @@ class PatientProfile(Base):
     observations = relationship("ClinicalObservation", back_populates="patient", cascade="all, delete-orphan")
     twin_states = relationship("MaternalTwinState", back_populates="patient", cascade="all, delete-orphan")
     predictions = relationship("RiskPrediction", back_populates="patient", cascade="all, delete-orphan")
+    scenarios = relationship("SimulationScenario", back_populates="patient", cascade="all, delete-orphan")
+    devices = relationship("DeviceConnection", back_populates="patient", cascade="all, delete-orphan")
+    measurements = relationship("DeviceMeasurement", back_populates="patient", cascade="all, delete-orphan")
+    camera_sessions = relationship("CameraResearchSession", back_populates="patient", cascade="all, delete-orphan")
 
 class PregnancyEpisode(Base):
     __tablename__ = "pregnancy_episodes"
@@ -248,3 +252,108 @@ class AuditEvent(Base):
     timestamp = Column(DateTime(timezone=True), default=utc_now)
     
     user = relationship("User", back_populates="audit_events")
+
+class SimulationScenario(Base):
+    __tablename__ = "simulation_scenarios"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="CASCADE"), nullable=False)
+    created_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name = Column(String(150), nullable=False)
+    category = Column(String(50), default="cardiovascular")  # cardiovascular, preeclampsia_risk, gestational_timeline, metabolic_health, sleep_stress, sensor_reliability, monitoring_schedule, postpartum
+    description = Column(Text, nullable=True)
+    parameters_json = Column(Text, nullable=False)
+    results_json = Column(Text, nullable=False)
+    is_baseline = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    patient = relationship("PatientProfile", back_populates="scenarios")
+    creator = relationship("User")
+
+class DeviceConnection(Base):
+    __tablename__ = "device_connections"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="CASCADE"), nullable=False)
+    device_type = Column(String(50), nullable=False)  # blood_pressure_cuff, pulse_oximeter, glucose_meter, smart_ring, fitness_band, thermometer, weight_scale
+    manufacturer = Column(String(100), nullable=False)  # Omron, Masimo, Dexcom, Oura, Garmin, Withings
+    model_name = Column(String(100), nullable=False)
+    serial_number = Column(String(100), nullable=True)
+    connection_protocol = Column(String(50), default="mock")  # mock, bluetooth_ble, vendor_api, health_platform
+    connection_status = Column(String(50), default="disconnected")  # connected, disconnected, syncing, error, unconfigured
+    battery_percentage = Column(Integer, nullable=True)
+    last_sync_at = Column(DateTime(timezone=True), nullable=True)
+    error_message = Column(Text, nullable=True)
+    settings_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    patient = relationship("PatientProfile", back_populates="devices")
+    measurements = relationship("DeviceMeasurement", back_populates="device", cascade="all, delete-orphan")
+
+class DeviceMeasurement(Base):
+    __tablename__ = "device_measurements"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="CASCADE"), nullable=False)
+    device_connection_id = Column(String(36), ForeignKey("device_connections.id", ondelete="SET NULL"), nullable=True)
+    measurement_type = Column(String(50), nullable=False)  # blood_pressure, pulse_oximetry, blood_glucose, wearable_vitals, temperature, weight, symptom_stress
+    value_numeric = Column(Float, nullable=True)
+    value_secondary = Column(Float, nullable=True)
+    value_text = Column(String(100), nullable=True)
+    unit = Column(String(50), nullable=False)  # mmHg, %, mg/dL, mmol/L, bpm, ms, degC, kg, score
+    measurement_timestamp = Column(DateTime(timezone=True), nullable=False)
+    recording_timestamp = Column(DateTime(timezone=True), default=utc_now)
+    timezone = Column(String(50), default="UTC")
+    source_type = Column(String(50), default="manual")  # manual, mock_device, bluetooth_ble, vendor_api, health_platform, simulation
+    device_manufacturer = Column(String(100), nullable=True)
+    device_model = Column(String(100), nullable=True)
+    context_data_json = Column(Text, nullable=True)  # {"body_position": "sitting", "meal_context": "fasting", ...}
+    quality_status = Column(String(50), default="VALID")  # VALID, SUSPECT, NOISY, DEGRADED, OUT_OF_BOUNDS
+    confidence = Column(Float, default=1.0)
+    is_hypothetical = Column(Boolean, default=False)
+    is_reviewed = Column(Boolean, default=False)
+    idempotency_key = Column(String(128), unique=True, nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    patient = relationship("PatientProfile", back_populates="measurements")
+    device = relationship("DeviceConnection", back_populates="measurements")
+
+class CameraResearchSession(Base):
+    __tablename__ = "camera_research_sessions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="CASCADE"), nullable=False)
+    session_timestamp = Column(DateTime(timezone=True), default=utc_now)
+    duration_seconds = Column(Integer, nullable=False)
+
+    # Environmental & Quality Telemetry
+    lighting_condition = Column(String(50), default="OPTIMAL")
+    motion_stability = Column(String(50), default="STABLE")
+    signal_quality_score = Column(Float, nullable=False)
+    face_tracking_ratio = Column(Float, default=1.0)
+
+    # Physiological rPPG signals
+    estimated_pulse_bpm = Column(Float, nullable=True)
+    hrv_rmssd_ms = Column(Float, nullable=True)
+    hrv_status = Column(String(100), default="INSUFFICIENT_DURATION")
+    rppg_algorithm = Column(String(50), default="CHROM_deHaan_2013")
+    rppg_snr_db = Column(Float, nullable=True)
+
+    # Observable Facial Action & Movement Indicators (JSON string)
+    facial_indicators_json = Column(Text, nullable=True)
+
+    # Stress Estimation Pipeline State
+    stress_pipeline_status = Column(String(100), default="UNAVAILABLE_AWAITING_VALIDATED_CLASSIFIER")
+    stress_feature_vector_json = Column(Text, nullable=True)
+
+    # User-Reported Research Reference (Subjective 1-10)
+    user_reported_stress = Column(Float, nullable=True)
+    user_notes = Column(Text, nullable=True)
+
+    # Consent & Provenance
+    consent_confirmed = Column(Boolean, default=True)
+    raw_video_stored = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    patient = relationship("PatientProfile", back_populates="camera_sessions")
