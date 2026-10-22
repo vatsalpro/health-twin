@@ -45,38 +45,84 @@ PregTwin was not conceived as a cold academic exercise or an automated diagnosti
 
 ```mermaid
 flowchart TD
-    subgraph INGESTION ["📥 Multi-Source Antenatal Ingestion"]
-        PDF["Antenatal PDFs & Clinical Labs\n(PyMuPDF 2.0 Coordinate Extraction)"]
-        IOT["Ambulatory IoT Vitals\n(BLE Sphygmomanometer, SpO2, CGM, Scale)"]
-        VISION["Contactless Computer Vision\n(MediaPipe Landmarker + CHROM rPPG)"]
-        CLIN["Human Clinician In-the-Loop\n(Dual-Panel Audit & Correction Queue)"]
+    subgraph INGESTION ["📥 Multi-Source Clinical & Sensory Telemetry"]
+        PDF["Antenatal PDFs & Clinical Lab Reports\n(PyMuPDF 2.0 Coordinate Extraction)"]
+        IOT["Ambulatory IoT Vitals\n(BLE Sphygmomanometer, SpO2, Scale, CGM)"]
+        VISION["Contactless Optical Sensing\n(MediaPipe 478 Mesh + CHROM rPPG)"]
+        PATIENT_MSG["Patient Inquiries, Symptoms & Adherence Feedback"]
+        CLIN_INPUT["Clinician Working Schedule & Prescription Orders"]
     end
 
-    subgraph ENGINE ["🧠 Intelligence Core & Digital Twin State"]
-        EXTRACT["Context-Aware Extractor\n(Ollama llama3.2:3b / Deterministic Rules)"]
-        TWIN["Maternal Digital Twin Engine\n(Longitudinal State Synchronization & MAP Modeling)"]
-        RISK["Platt-Calibrated 14-Day Horizon Risk Model\n(ACOG/ISSHP Criteria • Zero Temporal Leakage)"]
-        SIM["What-If Simulation Lab\n(Cardiovascular, Metabolic, Renal & Sensor Shock)"]
+    subgraph GATEWAY ["🛡️ Security, Role Isolation & Pre-LLM Safety Gates"]
+        RBAC["JWT & RBAC Security Layer\n(Clinician vs Patient Isolation)"]
+        EMERGENCY_GATE["Deterministic Emergency Rule Engine\n(ACOG/ISSHP Maternal Criteria)"]
+        INTENT_GATE["Intent Classifier & Prompt Injection Defenses"]
     end
 
-    subgraph PRESENTATION ["🖥️ Immersive Clinical & Patient Experience"]
-        WEBGL["Three.js 3D Living Twin\n(Procedural GLSL Physiological Shaders)"]
-        DASH["Clinical Telemetry Dashboard\n(Waveform Visualizers, Recharts Trends, Alerts)"]
-        LAB["Counterfactual Simulation Lab\n(Dynamic Sliders, Multi-Scenario Diff, CSV Export)"]
-        CAMERA["Facial & rPPG Stress Research Studio\n(On-Device CHROM Pulse, Blink Rate, Action Units)"]
+    subgraph DUAL_AI ["🧠 Dual AI Architecture (Strict Isolation)"]
+        subgraph OLLAMA_BOX ["Private Local AI Engine (Zero Egress)"]
+            OLLAMA["Local Ollama (llama3.2:3b on localhost:11434)"]
+            EXTRACTOR["Coordinate Extractor & Clinical Lab Parser"]
+        end
+        subgraph REQUESTY_BOX ["Patient Conversational AI Gateway"]
+            REQUESTY["Requesty API Gateway (router.requesty.ai/v1)"]
+            CRANE_CLIENT["Isolated Dr. Crane Service\n(google/gemma-4-31b-it)"]
+        end
     end
 
-    PDF --> EXTRACT
-    IOT --> TWIN
-    VISION --> CAMERA
-    CLIN --> EXTRACT
-    EXTRACT --> TWIN
-    TWIN --> RISK
-    TWIN --> SIM
-    TWIN --> WEBGL
-    RISK --> DASH
-    SIM --> LAB
-    CAMERA --> DASH
+    subgraph TWIN_CORE ["🧬 Maternal Digital Twin & Risk Forecasting Core"]
+        TWIN_STATE["Maternal Digital Twin State Engine\n(MAP & Hemodynamic Trajectories)"]
+        RISK_MODEL["14-Day Platt-Calibrated Preeclampsia Risk Model\n(Zero Temporal Leakage)"]
+        SIM_LAB["Counterfactual Simulation Lab\n(Cardiovascular, Renal, Metabolic Shock)"]
+    end
+
+    subgraph CLINICAL_COORDINATION ["🩺 Care Coordination & Escalation Engine"]
+        MED_ENGINE["Clinician Medication Engine\n(Dosage, Route, Timing Slots, Warnings)"]
+        SCHEDULE_ENGINE["Doctor Schedule Builder &\nAtomic Consultation Booking"]
+        ALERT_DISPATCH["High-Priority Emergency Escalation &\nOn-Call Clinician Alerts"]
+        DOSE_SYNC["Scheduled Dose Reminder Synchronization &\nNotification Center"]
+    end
+
+    subgraph EXPERIENCE ["🖥️ Immersive Clinical & Patient Experience"]
+        WELCOME["Front Welcome Screen\n(Real Maternal Photography & Origami Animation)"]
+        WEBGL["Three.js 3D Living Twin\n(Procedural GLSL Shaders & GA Scaling)"]
+        PATIENT_PORTAL["Patient Portal (Dr. Crane Mascot Chat,\nMedications, Camera Scan)"]
+        CLINICIAN_PORTAL["Clinician Workstation (Review Queue,\nTwin Timeline, Audit Trail)"]
+    end
+
+    PDF --> EXTRACTOR
+    EXTRACTOR --> OLLAMA
+    OLLAMA --> TWIN_STATE
+    IOT --> TWIN_STATE
+    VISION --> PATIENT_PORTAL
+
+    PATIENT_MSG --> RBAC
+    RBAC --> EMERGENCY_GATE
+    EMERGENCY_GATE -- "Critical Warning Signs" --> ALERT_DISPATCH
+    ALERT_DISPATCH --> CLINICIAN_PORTAL
+    ALERT_DISPATCH --> PATIENT_PORTAL
+    EMERGENCY_GATE -- "Standard Patient Query" --> INTENT_GATE
+    INTENT_GATE --> CRANE_CLIENT
+    CRANE_CLIENT --> REQUESTY
+    TWIN_STATE --> CRANE_CLIENT
+    MED_ENGINE --> CRANE_CLIENT
+    SCHEDULE_ENGINE --> CRANE_CLIENT
+    REQUESTY --> PATIENT_PORTAL
+
+    CLIN_INPUT --> RBAC
+    RBAC --> MED_ENGINE
+    RBAC --> SCHEDULE_ENGINE
+    MED_ENGINE --> DOSE_SYNC
+    DOSE_SYNC --> PATIENT_PORTAL
+    SCHEDULE_ENGINE --> PATIENT_PORTAL
+
+    TWIN_STATE --> RISK_MODEL
+    TWIN_STATE --> SIM_LAB
+    TWIN_STATE --> WEBGL
+    RISK_MODEL --> CLINICIAN_PORTAL
+    SIM_LAB --> CLINICIAN_PORTAL
+    WELCOME --> PATIENT_PORTAL
+    WELCOME --> CLINICIAN_PORTAL
 ```
 
 ---
@@ -259,16 +305,48 @@ npm run dev
 
 ---
 
-## 👥 Seed Demonstration Profiles
+## 📊 Demonstration Data & Synthetic Clinical Fixtures
 
-For instant evaluation, the platform includes pre-configured synthetic maternal profiles representing distinct clinical risk trajectories:
+PregTwin includes a complete, procedurally generated maternal health dataset that models real-world antenatal trajectories without exposing any Protected Health Information (PHI):
 
-| Role | Email | Password | Clinical Context |
+### 1. 👥 Clinical Cohort Profiles
+
+| Role | Email | Password | Clinical Trajectory & Telemetry |
 | :--- | :--- | :--- | :--- |
-| **Attending Clinician** | `dr.elena@pregtwin.org` | `Clinician2026!` | Dr. Elena Vance, MD, FACOG — full access to clinician review queue, audit trail, and all patient twins |
-| **Patient 1 (High Risk)** | `maya.lin@pregtwin.org` | `Patient2026!` | Maya Lin (31yo, G2P0, GA 31.4w) — rising SBP trajectory (122 $\to$ 142 mmHg), 1+ proteinuria, high preeclampsia risk |
-| **Patient 2 (Moderate Risk)** | `sophia.reyes@pregtwin.org` | `Patient2026!` | Sophia Reyes (36yo, GA 28.0w) — chronic hypertension, history of preeclampsia, monitored closely |
-| **Patient 3 (Early Guard)** | `clara.novak@pregtwin.org` | `Patient2026!` | Clara Novak (26yo, GA 16.0w) — triggers strict $<20.0$ week `INSUFFICIENT_DATA` safety guard |
+| **Attending Clinician** | `dr.elena@pregtwin.org` | `Clinician2026!` | **Dr. Elena Vance, MD, FACOG** — Maternal-Fetal Medicine Specialist. Full authority over prescription orders, review queue, emergency alerts, and active availability calendar. |
+| **Patient 1 (High Risk)** | `maya.lin@pregtwin.org` | `Patient2026!` | **Maya Lin (31yo, G2P0, GA 31.4w)** — Rising SBP trajectory (122 $\to$ 142 mmHg), 1+ proteinuria, UPCR 0.34 mg/mg, high 14-day preeclampsia risk. Prescribed Labetalol 100 mg twice daily, Methyldopa 250 mg twice daily, and Low-Dose Aspirin 81 mg. |
+| **Patient 2 (Moderate Risk)** | `sophia.reyes@pregtwin.org` | `Patient2026!` | **Sophia Reyes (36yo, GA 28.0w)** — Chronic hypertension, history of preeclampsia in prior pregnancy, stable longitudinal monitoring. |
+| **Patient 3 (Early Guard)** | `clara.novak@pregtwin.org` | `Patient2026!` | **Clara Novak (26yo, GA 16.0w)** — Demonstrates ACOG/ISSHP $<20.0$ week safety guard (`INSUFFICIENT_DATA`), preventing premature clinical labeling. |
+
+### 2. 📄 Antenatal Surveillance PDF Fixtures
+- **Automated Generation:** Generated procedurally by PyMuPDF (`fitz`) during database initialization.
+- **Location:** `backend/storage/documents/` (e.g. `maya_lin_antenatal_31w.pdf`).
+- **Clinical Structure:** Dual-page official hospital report format featuring header branding, vitals table, automated urinalysis results, obstetric lab panel (platelets, AST, ALT, serum creatinine), clinician assessment notes, and longitudinal ambulatory blood pressure logs.
+
+### 3. 💊 Evidence-Based Maternal Drug Monographs
+Pre-configured clinical monographs for 6 essential maternal medications:
+- **Labetalol:** Non-selective beta/alpha-1 adrenergic antagonist for pregnancy hypertension.
+- **Methyldopa:** Centrally-acting alpha-2 adrenergic agonist for chronic hypertension in pregnancy.
+- **Low-Dose Aspirin (81 mg):** Antiplatelet therapy for preeclampsia prophylaxis.
+- **Nifedipine:** Extended-release calcium channel blocker.
+- **Hydralazine:** Direct arteriolar vasodilator for acute severe hypertension.
+- **Magnesium Sulfate:** Neuroprotection and eclampsia seizure prophylaxis.
+
+### 4. 🗄️ Database Initialization & Reset
+To initialize or reset the complete database and all synthetic records:
+```bash
+cd backend
+python -m app.seed.seed_data
+```
+This script:
+1. Provisions all database tables (`pregtwin.db`).
+2. Creates the clinician and patient user accounts.
+3. Generates the synthetic antenatal PDF report in `backend/storage/documents/`.
+4. Seeds longitudinal clinical observations (blood pressure, dipstick, labs).
+5. Initializes the 3D maternal digital twin baseline state.
+6. Provisions clinician-approved medication orders and dosage timing schedules.
+7. Generates Dr. Elena Vance's active weekly availability schedule.
+8. Synchronizes scheduled dose reminders and welcome notifications.
 
 ---
 

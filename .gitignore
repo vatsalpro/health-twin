@@ -27,7 +27,7 @@ backend/pregtwin.db
 *.bak
 *.bak*
 *.audit.bak
-storage/
+/storage/
 
 # Node / Frontend
 node_modules/
