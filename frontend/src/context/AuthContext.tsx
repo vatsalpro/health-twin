@@ -29,6 +29,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setSelectedPatientId = (id: string) => {
     setSelectedPatientIdState(id);
     localStorage.setItem('pregtwin_patient_id', id);
+    const cached = allPatients.find((p) => p.id === id);
+    if (cached) {
+      setSelectedPatient(cached);
+    }
   };
 
   const refreshPatientData = async () => {

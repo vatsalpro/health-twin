@@ -20,6 +20,11 @@ from app.api import (
     devices,
     measurements,
     camera_research,
+    medications,
+    appointments,
+    notifications,
+    emergency,
+    ai_assistant,
 )
 
 @asynccontextmanager
@@ -63,6 +68,11 @@ app.include_router(measurements.router, prefix=api_v1_prefix)
 app.include_router(camera_research.router, prefix=api_v1_prefix)
 app.include_router(clinician.router, prefix=api_v1_prefix)
 app.include_router(audit.router, prefix=api_v1_prefix)
+app.include_router(medications.router, prefix=api_v1_prefix)
+app.include_router(appointments.router, prefix=api_v1_prefix)
+app.include_router(notifications.router, prefix=api_v1_prefix)
+app.include_router(emergency.router, prefix=api_v1_prefix)
+app.include_router(ai_assistant.router, prefix=api_v1_prefix)
 
 @app.get("/")
 def root():

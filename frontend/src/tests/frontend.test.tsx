@@ -21,10 +21,10 @@ describe('PregTwin Frontend Test Suite', () => {
       </AuthProvider>
     );
 
-    expect(screen.getByText('PregTwin')).toBeDefined();
+    expect(screen.getAllByText('PregTwin').length).toBeGreaterThan(0);
     expect(screen.getByText('Dr. Elena Vance')).toBeDefined();
     expect(screen.getByText('Maya Lin (31.4w)')).toBeDefined();
-    expect(screen.getByPlaceholderText('clinician@hospital.org')).toBeDefined();
+    expect(screen.getByPlaceholderText('you@hospital.org')).toBeDefined();
   });
 
   it('renders MaternalTwin3D without crashing and handles WebGL gracefully', () => {
@@ -39,6 +39,8 @@ describe('PregTwin Frontend Test Suite', () => {
     );
 
     expect(container).toBeDefined();
+    expect(screen.getByText('Maternal Twin Telemetry')).toBeDefined();
+    expect(screen.getByText(/31.4w GA/)).toBeDefined();
   });
 
   it('renders Clinical UI design system components (Badge, Alert, MetricCard)', () => {

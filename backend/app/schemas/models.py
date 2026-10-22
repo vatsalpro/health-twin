@@ -315,3 +315,194 @@ class AuditEventSchema(BaseModel):
     details: Dict[str, Any] = {}
     ip_address: Optional[str]
     timestamp: datetime
+
+# --- Medication Management Schemas ---
+class MedicationOrderCreate(BaseModel):
+    patient_id: str
+    medication_name: str = Field(..., min_length=2, max_length=150)
+    strength: Optional[str] = None
+    formulation: Optional[str] = None
+    prescribed_dose: str = Field(..., min_length=1)
+    route: str = Field(default="oral")
+    frequency: str = Field(..., min_length=2)
+    timing_slots: Optional[List[str]] = Field(default=["08:00", "20:00"])
+    start_date: str = Field(..., description="YYYY-MM-DD")
+    end_date: Optional[str] = None
+    clinician_instructions: str = Field(..., min_length=5)
+    warnings_precautions: Optional[str] = None
+
+class MedicationOrderResponse(BaseModel):
+    id: str
+    patient_id: str
+    prescribing_clinician_id: str
+    prescribing_clinician_name: Optional[str] = None
+    medication_name: str
+    strength: Optional[str] = None
+    formulation: Optional[str] = None
+    prescribed_dose: str
+    route: str
+    frequency: str
+    timing_slots: List[str] = []
+    start_date: str
+    end_date: Optional[str] = None
+    clinician_instructions: str
+    warnings_precautions: Optional[str] = None
+    status: str
+    version: int
+    approved_by_id: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    discontinued_at: Optional[datetime] = None
+    discontinued_reason: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+class MedicationDoseLogCreate(BaseModel):
+    scheduled_time: Optional[str] = None
+    status: str = Field(default="TAKEN", description="TAKEN, MISSED, SKIPPED")
+    patient_notes: Optional[str] = None
+    reported_side_effects: Optional[str] = None
+    reported_side_effects_severity: Optional[str] = Field(default="MILD", description="MILD, MODERATE, SEVERE")
+
+class MedicationDoseLogResponse(BaseModel):
+    id: str
+    order_id: str
+    patient_id: str
+    medication_name: Optional[str] = None
+    scheduled_time: datetime
+    logged_time: datetime
+    status: str
+    patient_notes: Optional[str] = None
+    reported_side_effects: Optional[str] = None
+    reported_side_effects_severity: Optional[str] = None
+    created_at: datetime
+
+# --- Doctor Availability & Appointment Schemas ---
+class DoctorAvailabilityConfig(BaseModel):
+    day_of_week: int = Field(..., ge=0, le=6, description="0=Monday, 6=Sunday")
+    start_time: str = Field(default="09:00", description="HH:MM")
+    end_time: str = Field(default="17:00", description="HH:MM")
+    slot_duration_minutes: int = Field(default=30, ge=10, le=120)
+    break_start: Optional[str] = Field(default="12:00")
+    break_end: Optional[str] = Field(default="13:00")
+    timezone: str = Field(default="UTC")
+    is_active: bool = True
+    max_daily_capacity: int = Field(default=12, ge=1, le=50)
+
+class DoctorAvailabilityResponse(BaseModel):
+    id: str
+    doctor_id: str
+    doctor_name: Optional[str] = None
+    day_of_week: int
+    start_time: str
+    end_time: str
+    slot_duration_minutes: int
+    break_start: Optional[str] = None
+    break_end: Optional[str] = None
+    timezone: str
+    is_active: bool
+    max_daily_capacity: int
+    created_at: datetime
+
+class TimeSlotResponse(BaseModel):
+    doctor_id: str
+    doctor_name: str
+    start_time: datetime
+    end_time: datetime
+    formatted_time: str
+    formatted_date: str
+    is_available: bool
+
+class AppointmentBookRequest(BaseModel):
+    patient_id: str
+    doctor_id: str
+    start_time: datetime
+    appointment_type: str = Field(default="in_person", description="in_person, telehealth, urgent_review")
+    reason: str = Field(..., min_length=3)
+    booking_channel: str = Field(default="ai_assistant")
+
+class AppointmentRescheduleRequest(BaseModel):
+    new_start_time: datetime
+    reason: Optional[str] = None
+
+class AppointmentCancelRequest(BaseModel):
+    cancellation_reason: str = Field(..., min_length=3)
+
+class AppointmentResponse(BaseModel):
+    id: str
+    patient_id: str
+    patient_name: Optional[str] = None
+    doctor_id: str
+    doctor_name: Optional[str] = None
+    start_time: datetime
+    end_time: datetime
+    status: str
+    appointment_type: str
+    reason: str
+    booking_channel: str
+    cancellation_reason: Optional[str] = None
+    created_at: datetime
+
+# --- Notification Schemas ---
+class NotificationResponse(BaseModel):
+    id: str
+    user_id: str
+    patient_id: Optional[str] = None
+    category: str
+    title: str
+    message: str
+    priority: str
+    link_url: Optional[str] = None
+    is_read: bool
+    read_at: Optional[datetime] = None
+    delivery_status: str
+    metadata: Dict[str, Any] = {}
+    created_at: datetime
+
+class NotificationUnreadCountResponse(BaseModel):
+    unread_count: int
+    high_priority_count: int
+    has_emergency: bool
+
+# --- Emergency Event Schemas ---
+class EmergencyEventResponse(BaseModel):
+    id: str
+    patient_id: str
+    patient_name: Optional[str] = None
+    patient_mrn: Optional[str] = None
+    reported_by_user_id: str
+    assigned_clinician_id: Optional[str] = None
+    matched_rules: List[str] = []
+    reported_symptoms: str
+    severity_level: str
+    status: str
+    acknowledged_by_id: Optional[str] = None
+    acknowledged_at: Optional[datetime] = None
+    resolution_notes: Optional[str] = None
+    escalated_at: Optional[datetime] = None
+    delivery_attempts: int
+    created_at: datetime
+
+class EmergencyAcknowledgeRequest(BaseModel):
+    notes: Optional[str] = None
+
+class EmergencyResolveRequest(BaseModel):
+    resolution_notes: str = Field(..., min_length=5)
+
+# --- AI Assistant Chat Schemas ---
+class AIChatRequest(BaseModel):
+    patient_id: str
+    message: str = Field(..., min_length=1, max_length=2000)
+    client_timezone: Optional[str] = Field(default="UTC")
+
+class AIChatResponse(BaseModel):
+    message_id: str
+    assistant_reply: str
+    intent_category: str
+    is_emergency: bool = False
+    emergency_event_id: Optional[str] = None
+    emergency_instructions: Optional[str] = None
+    mascot_expression: str = Field(default="caring", description="caring, attentive, alert")
+    suggested_slots: List[TimeSlotResponse] = []
+    action_taken: Optional[Dict[str, Any]] = None
+    grounding_sources: List[str] = []
+    created_at: datetime

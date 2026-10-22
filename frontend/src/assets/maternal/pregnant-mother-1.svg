@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 650" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient: Soft Pearlescent Lavender -->
+    <linearGradient id="bgGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FAF5FF"/>
+      <stop offset="50%" stop-color="#F3E8FF"/>
+      <stop offset="100%" stop-color="#EDE9FE"/>
+    </linearGradient>
+
+    <!-- Maternal Silhouette Gradients -->
+    <linearGradient id="skinGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FED7AA" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#FDBA74" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#FB923C" stop-opacity="0.7"/>
+    </linearGradient>
+
+    <linearGradient id="dressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="50%" stop-color="#F5F3FF" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#E9D5FF" stop-opacity="0.85"/>
+    </linearGradient>
+
+    <linearGradient id="purpleAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A855F7"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+
+    <!-- Warm Amethyst Belly Glow -->
+    <radialGradient id="amethystGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#C084FC" stop-opacity="0.6"/>
+      <stop offset="50%" stop-color="#A855F7" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#7C3AED" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#7C3AED" flood-opacity="0.12"/>
+    </filter>
+
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Card Background -->
+  <rect width="500" height="650" rx="28" fill="url(#bgGrad1)"/>
+  <rect width="496" height="646" x="2" y="2" rx="26" fill="none" stroke="#E9D5FF" stroke-width="2"/>
+
+  <!-- Ambient Decorative Rings -->
+  <circle cx="250" cy="360" r="180" fill="url(#amethystGlow)"/>
+  <circle cx="250" cy="360" r="140" fill="none" stroke="#DDD6FE" stroke-width="1.5" stroke-dasharray="4 6"/>
+  <circle cx="250" cy="360" r="210" fill="none" stroke="#E9D5FF" stroke-width="1" stroke-dasharray="6 8"/>
+
+  <!-- Serene Maternal Figure (Artistic Stylized Silhouette) -->
+  <g filter="url(#softShadow)">
+    <!-- Flowing Hair -->
+    <path d="M 230 110 C 180 130 170 210 185 290 C 190 320 200 350 215 370 C 205 320 200 240 225 180 Z" fill="#6B21A8" opacity="0.8"/>
+    
+    <!-- Head & Face Profile -->
+    <ellipse cx="250" cy="155" rx="36" ry="46" fill="#FDE68A" opacity="0.95"/>
+    <path d="M 268 150 C 278 160 274 175 264 180 C 255 185 245 180 240 175" fill="none" stroke="#D97706" stroke-width="2" stroke-linecap="round"/>
+    
+    <!-- Gentle closed eyelid (serene expression) -->
+    <path d="M 258 152 Q 266 156 272 152" fill="none" stroke="#78350F" stroke-width="2" stroke-linecap="round"/>
+    <!-- Gentle smile -->
+    <path d="M 262 172 Q 268 176 272 171" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- Slender Neck & Shoulders -->
+    <path d="M 242 195 L 240 230 C 220 235 190 250 175 285 L 210 320 L 255 240 Z" fill="#FCD34D" opacity="0.85"/>
+
+    <!-- Flowing Lavender Maternal Gown -->
+    <path d="M 235 225 C 275 230 290 250 300 280 C 310 310 295 340 280 360 C 315 390 340 435 340 495 C 340 555 290 590 230 590 C 170 590 140 550 145 490 C 150 440 180 395 210 365 C 200 330 190 290 205 255 C 215 235 225 228 235 225 Z" fill="url(#dressGrad)"/>
+
+    <!-- Prominent, Beautiful Maternal Belly Arc -->
+    <path d="M 245 320 C 295 340 335 390 335 450 C 335 510 295 560 235 570 C 285 545 315 495 310 445 C 305 400 275 355 245 320 Z" fill="#DDD6FE" opacity="0.7"/>
+
+    <!-- Gently Resting Hands holding the Belly with tenderness -->
+    <!-- Upper hand -->
+    <path d="M 250 365 C 280 375 298 395 295 410 C 292 418 280 415 265 405 C 255 398 245 385 250 365 Z" fill="#FDE68A" opacity="0.95"/>
+    <!-- Lower hand supporting belly -->
+    <path d="M 240 480 C 270 485 290 475 298 460 C 302 452 292 448 275 455 C 260 462 248 472 240 480 Z" fill="#FDE68A" opacity="0.95"/>
+  </g>
+
+  <!-- Glowing Telemetry Waveform around the Belly -->
+  <g filter="url(#glow)">
+    <!-- Subtle heartbeat curve wrapping around the abdominal contour -->
+    <path d="M 180 440 L 220 440 L 228 420 L 236 460 L 244 430 L 252 445 L 260 440 L 330 440" fill="none" stroke="url(#purpleAccent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="236" cy="460" r="4" fill="#7C3AED"/>
+    <circle cx="244" cy="430" r="4" fill="#A855F7"/>
+  </g>
+
+  <!-- Floating Telemetry Glass Badges (Integrated into illustration) -->
+  <!-- Top Badge: Gestational Age -->
+  <g transform="translate(35, 45)">
+    <rect width="180" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.9" stroke="#E9D5FF" stroke-width="1.5"/>
+    <circle cx="24" cy="21" r="7" fill="#7C3AED"/>
+    <circle cx="24" cy="21" r="3" fill="#FFFFFF"/>
+    <text x="42" y="19" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#6B7280" letter-spacing="0.5">GESTATIONAL PROFILE</text>
+    <text x="42" y="32" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#4C1D95">31.4 WEEKS &bull; MAYA LIN</text>
+  </g>
+
+  <!-- Bottom-Right Badge: Fetal Heart Rate -->
+  <g transform="translate(270, 530)">
+    <rect width="195" height="52" rx="18" fill="#FFFFFF" fill-opacity="0.9" stroke="#E9D5FF" stroke-width="1.5" filter="url(#softShadow)"/>
+    <circle cx="28" cy="26" r="14" fill="#F3E8FF"/>
+    <path d="M 28 20 C 25 16 20 18 20 22 C 20 27 28 32 28 32 C 28 32 36 27 36 22 C 36 18 31 16 28 20 Z" fill="#7C3AED"/>
+    <text x="50" y="23" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#6B7280">FETAL HEART RATE</text>
+    <text x="50" y="39" font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="#4C1D95">142 <tspan font-size="10" font-weight="500" fill="#7C3AED">BPM (OPTIMAL)</tspan></text>
+  </g>
+
+  <!-- Bottom-Left Badge: Blood Pressure -->
+  <g transform="translate(35, 530)">
+    <rect width="180" height="52" rx="18" fill="#FFFFFF" fill-opacity="0.9" stroke="#E9D5FF" stroke-width="1.5" filter="url(#softShadow)"/>
+    <text x="20" y="23" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#6B7280">MATERNAL BP</text>
+    <text x="20" y="39" font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="#4C1D95">120/80 <tspan font-size="10" font-weight="500" fill="#059669">mmHg</tspan></text>
+  </g>
+</svg>

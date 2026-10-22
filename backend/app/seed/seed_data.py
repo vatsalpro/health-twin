@@ -18,6 +18,11 @@ from app.models.entities import (
     MaternalTwinState,
     RiskPrediction,
     AuditEvent,
+    MedicationOrder,
+    MedicationDoseLog,
+    DoctorAvailability,
+    Appointment,
+    Notification,
 )
 from app.services.twin_service import twin_service
 from app.services.prediction_service import prediction_engine
@@ -105,6 +110,13 @@ def seed_database():
         # Check if users already seeded
         existing_admin = db.query(User).filter(User.email == "dr.elena@pregtwin.org").first()
         if existing_admin:
+            if db.query(MedicationOrder).count() == 0:
+                print("Seeding medication orders, availability, appointments, and notifications for existing users...")
+                p1 = db.query(PatientProfile).filter(PatientProfile.mrn == "MRN-PT-2026-001").first()
+                p2 = db.query(PatientProfile).filter(PatientProfile.mrn == "MRN-PT-2026-002").first()
+                user_p1 = p1.user if p1 else None
+                if p1 and p2 and user_p1:
+                    seed_assistant_data(db, existing_admin, p1, p2, user_p1)
             print("Database already contains seed records.")
             return
 
@@ -368,10 +380,180 @@ def seed_database():
         twin_service.update_twin_state(db, p3.id, episode_id=ep3.id)
         pred_p3 = prediction_engine.evaluate_risk(db, p3.id)
 
-        print("Database seeded successfully with synthetic patients, documents, observations, and predictions.")
+        seed_assistant_data(db, clinician, p1, p2, user_p1)
+        print("Database seeded successfully with synthetic patients, documents, observations, predictions, medication orders, availability, and appointments.")
 
     finally:
         db.close()
+
+def seed_assistant_data(db: Session, clinician: User, p1: PatientProfile, p2: PatientProfile, user_p1: User):
+    # 5. Doctor Availability for Dr. Elena Vance (Mon-Fri 09:00-17:00, 30m slots)
+    for d in range(5):  # Monday to Friday
+        avail = DoctorAvailability(
+            doctor_id=clinician.id,
+            day_of_week=d,
+            start_time="09:00",
+            end_time="17:00",
+            slot_duration_minutes=30,
+            break_start="12:00",
+            break_end="13:00",
+            timezone="UTC",
+            is_active=True,
+            max_daily_capacity=12
+        )
+        db.add(avail)
+    db.commit()
+
+    # 6. Medication Orders for Maya Lin (p1)
+    med_labetalol = MedicationOrder(
+        patient_id=p1.id,
+        prescribing_clinician_id=clinician.id,
+        medication_name="Labetalol",
+        strength="100 mg",
+        formulation="Oral tablet",
+        prescribed_dose="100 mg",
+        route="oral",
+        frequency="twice daily",
+        timing_json=json.dumps(["08:00", "20:00"]),
+        start_date="2026-09-15",
+        clinician_instructions="Take 1 tablet (100 mg) twice daily with meals. Monitor home blood pressure before morning dose.",
+        warnings_precautions="Report heart rate < 55 bpm, severe dizziness, lightheadedness, or shortness of breath. Do not discontinue abruptly.",
+        status="APPROVED",
+        version=1,
+        approved_by_id=clinician.id,
+        approved_at=datetime(2026, 9, 15, 14, 30, tzinfo=timezone.utc),
+        created_at=datetime(2026, 9, 15, 14, 0, tzinfo=timezone.utc)
+    )
+    med_aspirin = MedicationOrder(
+        patient_id=p1.id,
+        prescribing_clinician_id=clinician.id,
+        medication_name="Low-Dose Aspirin",
+        strength="81 mg",
+        formulation="Oral tablet",
+        prescribed_dose="81 mg",
+        route="oral",
+        frequency="once daily at bedtime",
+        timing_json=json.dumps(["21:00"]),
+        start_date="2026-07-20",
+        clinician_instructions="Take 1 tablet (81 mg) daily at bedtime with a full glass of water.",
+        warnings_precautions="Take with food. Report any unusual bleeding or persistent stomach pain. Will be discontinued at 36 weeks.",
+        status="APPROVED",
+        version=1,
+        approved_by_id=clinician.id,
+        approved_at=datetime(2026, 7, 20, 10, 30, tzinfo=timezone.utc),
+        created_at=datetime(2026, 7, 20, 10, 0, tzinfo=timezone.utc)
+    )
+    med_prenatal_draft = MedicationOrder(
+        patient_id=p1.id,
+        prescribing_clinician_id=clinician.id,
+        medication_name="Prenatal Vitamins with Iron",
+        strength="Standard Obstetric Formulation",
+        formulation="Oral capsule",
+        prescribed_dose="1 capsule",
+        route="oral",
+        frequency="once daily in the morning",
+        timing_json=json.dumps(["09:00"]),
+        start_date="2026-09-16",
+        clinician_instructions="Take 1 capsule daily with breakfast. Increase dietary fiber to prevent constipation.",
+        warnings_precautions="Do not take at the exact same hour as antacids or calcium supplements.",
+        status="DRAFT",  # Awaiting review in doctor queue
+        version=1,
+        created_at=datetime(2026, 9, 15, 16, 0, tzinfo=timezone.utc)
+    )
+    # Medication Order for Sophia Reyes (p2)
+    med_nifedipine = MedicationOrder(
+        patient_id=p2.id,
+        prescribing_clinician_id=clinician.id,
+        medication_name="Nifedipine Extended Release",
+        strength="30 mg",
+        formulation="Oral extended-release tablet",
+        prescribed_dose="30 mg",
+        route="oral",
+        frequency="once daily in morning",
+        timing_json=json.dumps(["08:00"]),
+        start_date="2026-08-01",
+        clinician_instructions="Swallow tablet whole with water. Do not crush, chew, or divide.",
+        warnings_precautions="Avoid grapefruit juice. Report swelling of ankles or severe headache.",
+        status="APPROVED",
+        version=1,
+        approved_by_id=clinician.id,
+        approved_at=datetime(2026, 8, 1, 9, 30, tzinfo=timezone.utc),
+        created_at=datetime(2026, 8, 1, 9, 0, tzinfo=timezone.utc)
+    )
+    db.add_all([med_labetalol, med_aspirin, med_prenatal_draft, med_nifedipine])
+    db.commit()
+
+    # 7. Initial Dose Logs for Maya Lin
+    dose_log1 = MedicationDoseLog(
+        order_id=med_labetalol.id,
+        patient_id=p1.id,
+        scheduled_time=datetime(2026, 9, 16, 8, 0, tzinfo=timezone.utc),
+        logged_time=datetime(2026, 9, 16, 8, 15, tzinfo=timezone.utc),
+        status="TAKEN",
+        patient_notes="Taken with oatmeal breakfast. Resting BP was 134/86."
+    )
+    dose_log2 = MedicationDoseLog(
+        order_id=med_labetalol.id,
+        patient_id=p1.id,
+        scheduled_time=datetime(2026, 9, 16, 20, 0, tzinfo=timezone.utc),
+        logged_time=datetime(2026, 9, 16, 20, 10, tzinfo=timezone.utc),
+        status="TAKEN",
+        patient_notes="Taken after dinner."
+    )
+    db.add_all([dose_log1, dose_log2])
+    db.commit()
+
+    # 8. Upcoming Confirmed Appointment for Maya Lin
+    appt_time = datetime(2026, 9, 22, 10, 0, tzinfo=timezone.utc)
+    appt1 = Appointment(
+        patient_id=p1.id,
+        doctor_id=clinician.id,
+        start_time=appt_time,
+        end_time=appt_time + timedelta(minutes=30),
+        status="CONFIRMED",
+        appointment_type="in_person",
+        reason="Follow-up maternal blood pressure evaluation and preeclampsia lab review",
+        booking_channel="clinician_manual"
+    )
+    db.add(appt1)
+    db.commit()
+
+    # 9. Initial Persistent Notifications
+    notif_p1 = Notification(
+        user_id=user_p1.id,
+        patient_id=p1.id,
+        category="MEDICATION_ORDER_UPDATED",
+        title="Prescription Approved: Labetalol 100 mg",
+        message="Dr. Elena Vance has prescribed Labetalol 100 mg twice daily. Please review your updated care plan and dosage schedule.",
+        priority="NORMAL",
+        link_url="/medications",
+        is_read=False,
+        delivery_status="DELIVERED"
+    )
+    notif_p1_appt = Notification(
+        user_id=user_p1.id,
+        patient_id=p1.id,
+        category="APPOINTMENT_CONFIRMED",
+        title="Appointment Confirmed: Sept 22 at 10:00 AM",
+        message="Your antenatal checkup with Dr. Elena Vance is scheduled for Tuesday, Sept 22 at 10:00 AM.",
+        priority="NORMAL",
+        link_url="/appointments",
+        is_read=False,
+        delivery_status="DELIVERED"
+    )
+    notif_doc = Notification(
+        user_id=clinician.id,
+        patient_id=p1.id,
+        category="MEDICATION_ORDER_UPDATED",
+        title="Pending Order Review: Maya Lin",
+        message="Prenatal Multivitamin with Iron order is currently in DRAFT status awaiting your final clinical approval.",
+        priority="NORMAL",
+        link_url="/clinician/review-queue",
+        is_read=False,
+        delivery_status="DELIVERED"
+    )
+    db.add_all([notif_p1, notif_p1_appt, notif_doc])
+    db.commit()
 
 if __name__ == "__main__":
     seed_database()

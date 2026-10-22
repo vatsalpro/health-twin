@@ -1,6 +1,6 @@
 import json
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -135,6 +135,28 @@ def create_manual_measurement(
     quality_status = req.quality_status or "VALID"
     ctx_data = req.context_data or {}
 
+    # Determine active episode and gestational age at measurement time
+    active_ep = None
+    if patient.episodes:
+        active_ep = next((ep for ep in patient.episodes if ep.is_active), patient.episodes[0])
+    episode_id = active_ep.id if active_ep else None
+
+    obs_ga = None
+    if active_ep:
+        if active_ep.conception_date:
+            try:
+                conception = date.fromisoformat(active_ep.conception_date)
+                m_date = meas_time.date() if isinstance(meas_time, datetime) else meas_time
+                days_diff = (m_date - conception).days
+                obs_ga = round((days_diff / 7.0) + 2.0, 1)
+            except Exception:
+                obs_ga = active_ep.current_gestational_age_weeks
+        else:
+            obs_ga = active_ep.current_gestational_age_weeks
+
+    if obs_ga is None:
+        obs_ga = 28.0
+
     # 3. Physiological Bounds & Normalization
     m_type = req.measurement_type.lower()
 
@@ -234,6 +256,7 @@ def create_manual_measurement(
         # SBP observation
         obs_sbp = ClinicalObservation(
             patient_id=patient_id,
+            episode_id=episode_id,
             observation_type="blood_pressure",
             test_name="systolic_bp",
             value_numeric=val_num,
@@ -241,11 +264,13 @@ def create_manual_measurement(
             unit="mmHg",
             is_abnormal=val_num >= 140.0,
             measurement_timestamp=meas_time,
+            gestational_age_weeks=obs_ga,
             source_type="manual_measurement",
             review_status="ACCEPTED"
         )
         obs_dbp = ClinicalObservation(
             patient_id=patient_id,
+            episode_id=episode_id,
             observation_type="blood_pressure",
             test_name="diastolic_bp",
             value_numeric=val_sec,
@@ -253,6 +278,7 @@ def create_manual_measurement(
             unit="mmHg",
             is_abnormal=val_sec >= 90.0,
             measurement_timestamp=meas_time,
+            gestational_age_weeks=obs_ga,
             source_type="manual_measurement",
             review_status="ACCEPTED"
         )
@@ -261,6 +287,7 @@ def create_manual_measurement(
     elif m_type == "blood_glucose":
         obs_glu = ClinicalObservation(
             patient_id=patient_id,
+            episode_id=episode_id,
             observation_type="laboratory",
             test_name="fasting_glucose" if "fasting" in str(ctx_data.get("meal_context", "")).lower() else "random_glucose",
             value_numeric=val_num,
@@ -268,6 +295,7 @@ def create_manual_measurement(
             unit="mg/dL",
             is_abnormal=val_num >= 140.0,
             measurement_timestamp=meas_time,
+            gestational_age_weeks=obs_ga,
             source_type="manual_measurement",
             review_status="ACCEPTED"
         )
@@ -276,6 +304,7 @@ def create_manual_measurement(
     elif m_type == "weight":
         obs_wt = ClinicalObservation(
             patient_id=patient_id,
+            episode_id=episode_id,
             observation_type="vital_signs",
             test_name="weight",
             value_numeric=val_num,
@@ -283,6 +312,7 @@ def create_manual_measurement(
             unit="kg",
             is_abnormal=False,
             measurement_timestamp=meas_time,
+            gestational_age_weeks=obs_ga,
             source_type="manual_measurement",
             review_status="ACCEPTED"
         )
@@ -291,6 +321,7 @@ def create_manual_measurement(
     elif m_type == "temperature":
         obs_temp = ClinicalObservation(
             patient_id=patient_id,
+            episode_id=episode_id,
             observation_type="vital_signs",
             test_name="body_temperature",
             value_numeric=val_num,
@@ -298,6 +329,7 @@ def create_manual_measurement(
             unit="degC",
             is_abnormal=val_num >= 38.0 or val_num <= 35.5,
             measurement_timestamp=meas_time,
+            gestational_age_weeks=obs_ga,
             source_type="manual_measurement",
             review_status="ACCEPTED"
         )
@@ -326,6 +358,7 @@ def create_manual_measurement(
                 db.add(wt_meas)
                 obs_legacy_wt = ClinicalObservation(
                     patient_id=patient_id,
+                    episode_id=episode_id,
                     observation_type="vital_signs",
                     test_name="weight",
                     value_numeric=wt_val,
@@ -333,6 +366,7 @@ def create_manual_measurement(
                     unit="kg",
                     is_abnormal=False,
                     measurement_timestamp=meas_time,
+                    gestational_age_weeks=obs_ga,
                     source_type="manual_measurement",
                     review_status="ACCEPTED"
                 )
@@ -343,6 +377,7 @@ def create_manual_measurement(
     elif m_type == "pulse_oximetry":
         obs_spo2 = ClinicalObservation(
             patient_id=patient_id,
+            episode_id=episode_id,
             observation_type="vital_signs",
             test_name="spo2",
             value_numeric=val_num,
@@ -350,6 +385,7 @@ def create_manual_measurement(
             unit="%",
             is_abnormal=val_num < 95.0,
             measurement_timestamp=meas_time,
+            gestational_age_weeks=obs_ga,
             source_type="manual_measurement",
             review_status="ACCEPTED"
         )
@@ -357,6 +393,7 @@ def create_manual_measurement(
         if val_sec is not None:
             obs_hr = ClinicalObservation(
                 patient_id=patient_id,
+                episode_id=episode_id,
                 observation_type="vital_signs",
                 test_name="heart_rate",
                 value_numeric=val_sec,
@@ -364,6 +401,7 @@ def create_manual_measurement(
                 unit="bpm",
                 is_abnormal=val_sec > 100.0 or val_sec < 60.0,
                 measurement_timestamp=meas_time,
+                gestational_age_weeks=obs_ga,
                 source_type="manual_measurement",
                 review_status="ACCEPTED"
             )
@@ -373,6 +411,7 @@ def create_manual_measurement(
         if val_num is not None:
             obs_hr = ClinicalObservation(
                 patient_id=patient_id,
+                episode_id=episode_id,
                 observation_type="vital_signs",
                 test_name="heart_rate",
                 value_numeric=val_num,
@@ -380,6 +419,7 @@ def create_manual_measurement(
                 unit="bpm",
                 is_abnormal=val_num > 100.0 or val_num < 60.0,
                 measurement_timestamp=meas_time,
+                gestational_age_weeks=obs_ga,
                 source_type="manual_measurement",
                 review_status="ACCEPTED"
             )
@@ -387,6 +427,7 @@ def create_manual_measurement(
         if val_sec is not None:
             obs_hrv = ClinicalObservation(
                 patient_id=patient_id,
+                episode_id=episode_id,
                 observation_type="vital_signs",
                 test_name="hrv_rmssd",
                 value_numeric=val_sec,
@@ -394,6 +435,7 @@ def create_manual_measurement(
                 unit="ms",
                 is_abnormal=False,
                 measurement_timestamp=meas_time,
+                gestational_age_weeks=obs_ga,
                 source_type="manual_measurement",
                 review_status="ACCEPTED"
             )

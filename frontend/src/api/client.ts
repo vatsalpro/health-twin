@@ -303,6 +303,189 @@ export interface SystemDiagnostics {
   };
 }
 
+// --- Medication Management Schemas ---
+export interface MedicationOrder {
+  id: string;
+  patient_id: string;
+  prescribed_by_id: string;
+  approved_by_id?: string;
+  status: 'DRAFT' | 'APPROVED' | 'DISCONTINUED' | 'SUPERSEDED';
+  medication_name: string;
+  strength?: string;
+  formulation?: string;
+  prescribed_dose: string;
+  route: string;
+  frequency: string;
+  timing_slots: string[];
+  start_date?: string;
+  end_date?: string;
+  clinician_instructions?: string;
+  warnings_precautions?: string;
+  version: number;
+  supersedes_order_id?: string;
+  created_at: string;
+  approved_at?: string;
+  prescriber_name?: string;
+  approver_name?: string;
+  recent_dose_logs?: MedicationDoseLog[];
+}
+
+export interface MedicationDoseLog {
+  id: string;
+  order_id: string;
+  patient_id: string;
+  scheduled_time: string;
+  logged_time: string;
+  status: 'TAKEN' | 'MISSED' | 'SKIPPED' | 'SIDE_EFFECT_REPORTED';
+  patient_notes?: string;
+  side_effect_severity?: string;
+  side_effect_description?: string;
+  created_at: string;
+}
+
+export interface MedicationSummary {
+  patient_id: string;
+  total_active_orders: number;
+  total_doses_logged: number;
+  adherence_rate_pct: number;
+  consecutive_missed_doses: number;
+  consecutive_missed_alert: boolean;
+  recent_side_effects: any[];
+  upcoming_doses: {
+    order_id: string;
+    medication_name: string;
+    dose: string;
+    route: string;
+    scheduled_time: string;
+    instructions?: string;
+  }[];
+}
+
+export interface DrugMonograph {
+  generic_name: string;
+  drug_class: string;
+  intended_use: string;
+  pregnancy_safety_notes: string;
+  common_side_effects: string[];
+  serious_warning_signs: string[];
+  missed_dose_guidance: string;
+  clinical_reference: string;
+}
+
+// --- Appointment Scheduling Schemas ---
+export interface DoctorSlot {
+  doctor_id: string;
+  doctor_name: string;
+  start_time: string;
+  end_time: string;
+  is_available: boolean;
+  slot_type: string;
+}
+
+export interface Appointment {
+  id: string;
+  patient_id: string;
+  doctor_id: string;
+  scheduled_start: string;
+  scheduled_end: string;
+  status: 'SCHEDULED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'COMPLETED';
+  appointment_type: 'ROUTINE_PRENATAL' | 'URGENT_REVIEW' | 'TELEHEALTH' | 'POSTPARTUM_FOLLOWUP';
+  reason?: string;
+  patient_notes?: string;
+  clinician_notes?: string;
+  booked_via?: string;
+  doctor_name?: string;
+  patient_name?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface DoctorScheduleDay {
+  id?: string;
+  doctor_id?: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  is_active: boolean;
+}
+
+// --- Notification Center Schemas ---
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  patient_id?: string;
+  title: string;
+  message: string;
+  category: 'MEDICATION_REMINDER' | 'MISSED_DOSE_ALERT' | 'APPOINTMENT_UPDATE' | 'EMERGENCY_ALERT' | 'CLINICIAN_MESSAGE' | 'SYSTEM_UPDATE';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL_EMERGENCY';
+  action_url?: string;
+  metadata_json?: string;
+  is_read: boolean;
+  read_at?: string;
+  created_at: string;
+}
+
+export interface NotificationCount {
+  unread_count: number;
+  critical_unread: number;
+}
+
+// --- Emergency Workflow Schemas ---
+export interface EmergencyEventRecord {
+  id: string;
+  patient_id: string;
+  reported_by_id: string;
+  severity: string;
+  symptoms_summary: string;
+  detected_rules: string[];
+  trigger_message?: string;
+  status: 'ACTIVE' | 'ACKNOWLEDGED' | 'ESCALATED_BACKUP' | 'RESOLVED';
+  created_at: string;
+  acknowledged_at?: string;
+  acknowledged_by_id?: string;
+  resolution_notes?: string;
+  patient_name?: string;
+  mrn?: string;
+  acknowledged_by_name?: string;
+}
+
+// --- AI Assistant Schemas ---
+export interface AIChatRequest {
+  patient_id: string;
+  message: string;
+  conversation_context?: { role: string; content: string }[];
+}
+
+export interface AIChatResponse {
+  id: string;
+  patient_id: string;
+  intent_category: string;
+  assistant_reply: string;
+  mascot_expression: 'friendly' | 'caring' | 'attentive' | 'alert' | 'encouraging';
+  is_emergency: boolean;
+  emergency_event_id?: string;
+  emergency_instructions?: string;
+  suggested_followups: string[];
+  grounding_sources: string[];
+  doctor_slots?: DoctorSlot[];
+  active_orders?: MedicationOrder[];
+  created_at: string;
+}
+
+export interface AIChatMessageItem {
+  id: string;
+  patient_id: string;
+  sender_user_id: string;
+  role: 'user' | 'assistant' | 'system';
+  message: string;
+  intent_category?: string;
+  is_emergency: boolean;
+  mascot_expression?: string;
+  grounding_sources: string[];
+  created_at: string;
+}
+
 class ApiClient {
   private getHeaders(isMultipart = false): HeadersInit {
     const token = localStorage.getItem('pregtwin_token');
@@ -672,8 +855,11 @@ class ApiClient {
   }
 
   // Clinician Workspace
-  async getClinicianReviewQueue(): Promise<any> {
-    const res = await fetch(`${API_BASE}/clinician/review-queue`, {
+  async getClinicianReviewQueue(patientId?: string): Promise<any> {
+    const url = patientId
+      ? `${API_BASE}/clinician/review-queue?patient_id=${patientId}`
+      : `${API_BASE}/clinician/review-queue`;
+    const res = await fetch(url, {
       headers: this.getHeaders(),
     });
     return this.handleResponse<any>(res);
@@ -699,6 +885,261 @@ class ApiClient {
       headers: this.getHeaders(),
     });
     return this.handleResponse<SystemDiagnostics>(res);
+  }
+
+  // ==========================================
+  // Medication Management Endpoints
+  // ==========================================
+  async getMedicationOrders(patientId: string, status?: string): Promise<MedicationOrder[]> {
+    const qs = status ? `?patient_id=${patientId}&status=${status}` : `?patient_id=${patientId}`;
+    const res = await fetch(`${API_BASE}/medications/orders${qs}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<MedicationOrder[]>(res);
+  }
+
+  async createMedicationOrder(orderData: Partial<MedicationOrder>): Promise<MedicationOrder> {
+    const res = await fetch(`${API_BASE}/medications/orders`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(orderData),
+    });
+    return this.handleResponse<MedicationOrder>(res);
+  }
+
+  async approveMedicationOrder(orderId: string): Promise<MedicationOrder> {
+    const res = await fetch(`${API_BASE}/medications/orders/${orderId}/approve`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<MedicationOrder>(res);
+  }
+
+  async discontinueMedicationOrder(orderId: string): Promise<MedicationOrder> {
+    const res = await fetch(`${API_BASE}/medications/orders/${orderId}/discontinue`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<MedicationOrder>(res);
+  }
+
+  async logMedicationDose(
+    orderId: string,
+    data: {
+      scheduled_time: string;
+      status: string;
+      patient_notes?: string;
+      side_effect_severity?: string;
+      side_effect_description?: string;
+    }
+  ): Promise<MedicationDoseLog> {
+    const res = await fetch(`${API_BASE}/medications/orders/${orderId}/log-dose`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse<MedicationDoseLog>(res);
+  }
+
+  async getMedicationSummary(patientId: string): Promise<MedicationSummary> {
+    const res = await fetch(`${API_BASE}/medications/patient/${patientId}/summary`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<MedicationSummary>(res);
+  }
+
+  async getAllDrugMonographs(): Promise<Record<string, DrugMonograph>> {
+    const res = await fetch(`${API_BASE}/medications/monographs`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Record<string, DrugMonograph>>(res);
+  }
+
+  async getDrugMonograph(medicationName: string): Promise<DrugMonograph> {
+    const res = await fetch(`${API_BASE}/medications/monographs/${encodeURIComponent(medicationName)}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<DrugMonograph>(res);
+  }
+
+  async generateMedicationReminders(patientId: string): Promise<{ reminders_created: number }> {
+    const res = await fetch(`${API_BASE}/medications/patient/${patientId}/generate-reminders`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<{ reminders_created: number }>(res);
+  }
+
+  // ==========================================
+  // Appointment Scheduling Endpoints
+  // ==========================================
+  async getDoctorSlots(doctorId: string, startDate?: string, endDate?: string): Promise<DoctorSlot[]> {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${API_BASE}/appointments/doctor/${doctorId}/slots${qs}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<DoctorSlot[]>(res);
+  }
+
+  async getAppointments(patientId?: string, doctorId?: string, status?: string): Promise<Appointment[]> {
+    const params = new URLSearchParams();
+    if (patientId) params.append('patient_id', patientId);
+    if (doctorId) params.append('doctor_id', doctorId);
+    if (status) params.append('status', status);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${API_BASE}/appointments${qs}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<Appointment[]>(res);
+  }
+
+  async bookAppointment(bookingData: {
+    patient_id: string;
+    doctor_id: string;
+    scheduled_start: string;
+    scheduled_end: string;
+    appointment_type?: string;
+    reason?: string;
+    patient_notes?: string;
+    booked_via?: string;
+  }): Promise<Appointment> {
+    const res = await fetch(`${API_BASE}/appointments`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(bookingData),
+    });
+    return this.handleResponse<Appointment>(res);
+  }
+
+  async rescheduleAppointment(
+    appointmentId: string,
+    newStart: string,
+    newEnd: string,
+    reason?: string
+  ): Promise<Appointment> {
+    const res = await fetch(`${API_BASE}/appointments/${appointmentId}/reschedule`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        new_scheduled_start: newStart,
+        new_scheduled_end: newEnd,
+        reschedule_reason: reason,
+      }),
+    });
+    return this.handleResponse<Appointment>(res);
+  }
+
+  async cancelAppointment(appointmentId: string, reason?: string): Promise<Appointment> {
+    const res = await fetch(`${API_BASE}/appointments/${appointmentId}/cancel`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ cancellation_reason: reason }),
+    });
+    return this.handleResponse<Appointment>(res);
+  }
+
+  async getDoctorAvailability(doctorId: string): Promise<DoctorScheduleDay[]> {
+    const res = await fetch(`${API_BASE}/appointments/doctor/${doctorId}/availability`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<DoctorScheduleDay[]>(res);
+  }
+
+  async saveDoctorAvailability(doctorId: string, schedule: DoctorScheduleDay[]): Promise<DoctorScheduleDay[]> {
+    const res = await fetch(`${API_BASE}/appointments/doctor/${doctorId}/availability`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(schedule),
+    });
+    return this.handleResponse<DoctorScheduleDay[]>(res);
+  }
+
+  // ==========================================
+  // Notification Center Endpoints
+  // ==========================================
+  async getNotifications(limit = 40, unreadOnly = false): Promise<AppNotification[]> {
+    const res = await fetch(`${API_BASE}/notifications?limit=${limit}&unread_only=${unreadOnly}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<AppNotification[]>(res);
+  }
+
+  async getUnreadNotificationCount(): Promise<NotificationCount> {
+    const res = await fetch(`${API_BASE}/notifications/unread-count`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<NotificationCount>(res);
+  }
+
+  async markNotificationRead(notificationId: string): Promise<AppNotification> {
+    const res = await fetch(`${API_BASE}/notifications/${notificationId}/read`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<AppNotification>(res);
+  }
+
+  async markAllNotificationsRead(): Promise<{ updated: number }> {
+    const res = await fetch(`${API_BASE}/notifications/mark-all-read`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<{ updated: number }>(res);
+  }
+
+  // ==========================================
+  // Emergency Events Endpoints
+  // ==========================================
+  async getActiveEmergencies(): Promise<EmergencyEventRecord[]> {
+    const res = await fetch(`${API_BASE}/emergency/active`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<EmergencyEventRecord[]>(res);
+  }
+
+  async acknowledgeEmergency(eventId: string, resolutionNotes?: string): Promise<EmergencyEventRecord> {
+    const res = await fetch(`${API_BASE}/emergency/${eventId}/acknowledge`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ resolution_notes: resolutionNotes }),
+    });
+    return this.handleResponse<EmergencyEventRecord>(res);
+  }
+
+  // ==========================================
+  // AI Assistant Endpoints
+  // ==========================================
+  async chatWithAIAssistant(req: AIChatRequest): Promise<AIChatResponse> {
+    const res = await this.fetchWithTimeout(`${API_BASE}/ai-assistant/chat`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(req),
+    }, 45000);
+    return this.handleResponse<AIChatResponse>(res);
+  }
+
+  async getAIAssistantHistory(patientId: string, limit = 50): Promise<AIChatMessageItem[]> {
+    const res = await fetch(`${API_BASE}/ai-assistant/history/${patientId}?limit=${limit}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse<AIChatMessageItem[]>(res);
+  }
+
+  async submitAIAssistantFeedback(feedbackData: {
+    message_id: string;
+    patient_id: string;
+    rating: number;
+    clinician_notes?: string;
+  }): Promise<{ status: string }> {
+    const res = await fetch(`${API_BASE}/ai-assistant/feedback`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(feedbackData),
+    });
+    return this.handleResponse<{ status: string }>(res);
   }
 }
 

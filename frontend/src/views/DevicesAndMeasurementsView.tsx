@@ -198,7 +198,7 @@ export const DevicesAndMeasurementsView: React.FC = () => {
           measurement_type: 'temperature',
           value_numeric: formTemp,
           value_text: `${formTemp} ${formTempUnit}`,
-          unit: formTempUnit === '°C' ? 'degC' : 'F',
+          unit: formTempUnit.includes('F') ? 'F' : 'degC',
           context_data: { notes: formNotes },
         };
       } else if (formType === 'weight') {

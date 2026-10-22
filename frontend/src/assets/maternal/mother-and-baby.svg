@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 650" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient: Soft Pearlescent Sunset Lavender -->
+    <linearGradient id="bgGradBaby" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDF2F8"/>
+      <stop offset="45%" stop-color="#FAF5FF"/>
+      <stop offset="100%" stop-color="#EDE9FE"/>
+    </linearGradient>
+
+    <!-- Warm Skin Gradient -->
+    <linearGradient id="skinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="50%" stop-color="#FCA5A5"/>
+      <stop offset="100%" stop-color="#F472B6"/>
+    </linearGradient>
+
+    <!-- Mother Hair Gradient -->
+    <linearGradient id="hairGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4C1D95"/>
+      <stop offset="60%" stop-color="#6B21A8"/>
+      <stop offset="100%" stop-color="#831843"/>
+    </linearGradient>
+
+    <!-- Mother Dress Gradient -->
+    <linearGradient id="motherDress" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#DDD6FE"/>
+      <stop offset="60%" stop-color="#C4B5FD"/>
+      <stop offset="100%" stop-color="#A78BFA"/>
+    </linearGradient>
+
+    <!-- Baby Swaddle Gradient -->
+    <linearGradient id="babySwaddle" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="40%" stop-color="#FEF08A"/>
+      <stop offset="100%" stop-color="#FDE047"/>
+    </linearGradient>
+
+    <radialGradient id="haloGlow" cx="50%" cy="40%" r="55%">
+      <stop offset="0%" stop-color="#F472B6" stop-opacity="0.35"/>
+      <stop offset="50%" stop-color="#C084FC" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#FAF5FF" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#831843" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- Card Background -->
+  <rect width="500" height="650" rx="32" fill="url(#bgGradBaby)"/>
+  <rect width="496" height="646" x="2" y="2" rx="30" fill="none" stroke="#FBCFE8" stroke-width="2"/>
+
+  <!-- Halo Aura of Maternal Warmth -->
+  <circle cx="250" cy="270" r="180" fill="url(#haloGlow)"/>
+
+  <!-- Subtle Floating Decorative Sparkles & Hearts -->
+  <path d="M 120 160 C 120 148 135 140 142 152 C 149 140 164 148 164 160 C 164 175 142 190 142 190 C 142 190 120 175 120 160 Z" fill="#F472B6" opacity="0.45"/>
+  <path d="M 360 140 C 360 130 372 122 378 132 C 384 122 396 130 396 140 C 396 152 378 165 378 165 C 378 165 360 152 360 140 Z" fill="#C084FC" opacity="0.4"/>
+  <circle cx="380" cy="230" r="5" fill="#FBBF24" opacity="0.6"/>
+  <circle cx="100" cy="260" r="4" fill="#F472B6" opacity="0.5"/>
+  <circle cx="130" cy="380" r="6" fill="#A855F7" opacity="0.35"/>
+
+  <!-- Main Illustration Group -->
+  <g filter="url(#softGlow)">
+    <!-- Mother Flowing Hair Behind -->
+    <path d="M 170 210 C 150 260 140 360 165 440 C 180 490 205 520 220 530 C 200 480 185 410 190 320 C 190 260 185 220 170 210 Z" fill="url(#hairGrad)" opacity="0.85"/>
+
+    <!-- Mother Body / Soft Robe -->
+    <path d="M 195 280 C 170 340 160 430 175 560 L 340 560 C 355 490 350 420 330 350 C 310 280 270 270 240 280 Z" fill="url(#motherDress)"/>
+    
+    <!-- Mother Left Arm Cradling Baby -->
+    <path d="M 190 310 C 170 360 170 420 210 445 C 240 460 280 455 315 425 C 310 405 295 400 270 415 C 240 430 215 410 205 380 C 200 350 205 320 190 310 Z" fill="url(#skinGrad)"/>
+
+    <!-- Mother Right Hand Gently Supporting Baby's Head -->
+    <path d="M 300 310 C 320 330 330 370 315 410 C 300 405 290 380 295 350 Z" fill="url(#skinGrad)"/>
+    <ellipse cx="295" cy="340" rx="14" ry="8" transform="rotate(-25 295 340)" fill="url(#skinGrad)"/>
+
+    <!-- Mother Head & Neck -->
+    <path d="M 225 210 C 220 250 230 280 245 295 C 255 285 260 260 255 220 Z" fill="url(#skinGrad)"/>
+    
+    <!-- Mother Face (Profile Looking Down with Love) -->
+    <path d="M 230 170 C 215 190 220 225 240 245 C 265 260 285 240 285 210 C 285 180 260 155 230 170 Z" fill="url(#skinGrad)"/>
+    
+    <!-- Mother Closed Eyes (Peaceful Smile) -->
+    <path d="M 242 205 Q 248 212 254 205" fill="none" stroke="#831843" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Gentle Smile -->
+    <path d="M 252 225 Q 260 232 268 226" fill="none" stroke="#831843" stroke-width="2" stroke-linecap="round"/>
+    <!-- Soft Blush -->
+    <ellipse cx="250" cy="218" rx="8" ry="5" fill="#FB7185" opacity="0.45"/>
+
+    <!-- Mother Hair Front Sweep -->
+    <path d="M 230 165 C 210 175 195 210 205 245 C 210 230 220 210 235 200 C 255 185 275 170 295 195 C 295 170 270 145 230 165 Z" fill="url(#hairGrad)"/>
+    <path d="M 235 155 C 260 140 295 155 300 185 C 305 215 295 240 285 255 C 295 230 300 205 290 185 C 280 165 260 155 235 155 Z" fill="url(#hairGrad)"/>
+
+    <!-- BABY IN SWADDLE (Cradled against Mother's Chest) -->
+    <!-- Swaddle Blanket Body -->
+    <ellipse cx="270" cy="365" rx="52" ry="72" transform="rotate(-32 270 365)" fill="url(#babySwaddle)"/>
+    <path d="M 230 325 C 260 305 310 330 320 375 C 325 410 300 445 260 435 C 225 425 215 370 230 325 Z" fill="none" stroke="#FDE047" stroke-width="2.5" stroke-dasharray="4 4"/>
+
+    <!-- Swaddle Fold Overlay -->
+    <path d="M 245 320 C 275 350 285 390 280 430" fill="none" stroke="#F59E0B" stroke-width="2" opacity="0.6"/>
+    <path d="M 295 335 C 270 365 250 405 245 435" fill="none" stroke="#F59E0B" stroke-width="2" opacity="0.6"/>
+
+    <!-- Baby Head (Sleeping Peacefully) -->
+    <ellipse cx="260" cy="315" rx="26" ry="24" fill="url(#skinGrad)"/>
+    
+    <!-- Baby Sleeping Eyes (Gentle arc) -->
+    <path d="M 252 316 Q 256 320 260 316" fill="none" stroke="#9D174D" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 266 317 Q 270 321 274 317" fill="none" stroke="#9D174D" stroke-width="2" stroke-linecap="round"/>
+    <!-- Baby Soft Rosy Cheeks -->
+    <circle cx="249" cy="323" r="5" fill="#FDA4AF" opacity="0.65"/>
+    <circle cx="274" cy="324" r="5" fill="#FDA4AF" opacity="0.65"/>
+    <!-- Tiny Button Nose -->
+    <circle cx="262" cy="320" r="1.5" fill="#F43F5E"/>
+    <!-- Baby Bonnet / Cap -->
+    <path d="M 236 312 C 238 290 270 285 282 305 C 285 312 284 322 282 328 C 270 302 245 304 236 312 Z" fill="#DDD6FE"/>
+    <circle cx="282" cy="300" r="4" fill="#F472B6"/>
+  </g>
+
+  <!-- Bottom Informative Ribbon Badge -->
+  <g transform="translate(45, 570)">
+    <rect width="410" height="56" rx="16" fill="#FFFFFF" fill-opacity="0.95" stroke="#FBCFE8" stroke-width="1.5"/>
+    <circle cx="36" cy="28" r="16" fill="#FDF2F8"/>
+    <path d="M 36 21 C 36 17 43 14 46 19 C 49 14 56 17 56 21 C 56 27 46 33 46 33 C 46 33 36 27 36 21 Z" transform="translate(-10, -2)" fill="#EC4899"/>
+    
+    <text x="66" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="bold" fill="#831843">
+      Safe Delivery &amp; Thriving Newborn
+    </text>
+    <text x="66" y="42" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#9D174D" opacity="0.8">
+      Evidence-grounded prenatal tracking for mother and child
+    </text>
+  </g>
+</svg>

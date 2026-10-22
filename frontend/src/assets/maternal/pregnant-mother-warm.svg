@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 650" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient: Luminous Royal Lavender -->
+    <linearGradient id="bgGradPregnant" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FAF5FF"/>
+      <stop offset="50%" stop-color="#F3E8FF"/>
+      <stop offset="100%" stop-color="#EDE9FE"/>
+    </linearGradient>
+
+    <!-- Warm Skin Gradient -->
+    <linearGradient id="warmSkin" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FED7AA"/>
+      <stop offset="50%" stop-color="#FDBA74"/>
+      <stop offset="100%" stop-color="#FB923C"/>
+    </linearGradient>
+
+    <!-- Flowing Dress Gradient -->
+    <linearGradient id="maternalGown" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C084FC"/>
+      <stop offset="50%" stop-color="#9333EA"/>
+      <stop offset="100%" stop-color="#6B21A8"/>
+    </linearGradient>
+
+    <!-- Radial Gravid Glow -->
+    <radialGradient id="gravidGlow" cx="55%" cy="58%" r="45%">
+      <stop offset="0%" stop-color="#F472B6" stop-opacity="0.45"/>
+      <stop offset="50%" stop-color="#C084FC" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#9333EA" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#7C3AED" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <rect width="500" height="650" rx="32" fill="url(#bgGradPregnant)"/>
+  <rect width="496" height="646" x="2" y="2" rx="30" fill="none" stroke="#E9D5FF" stroke-width="2"/>
+
+  <!-- Telemetry Orbital Rings in Background -->
+  <circle cx="270" cy="370" r="170" fill="url(#gravidGlow)"/>
+  <circle cx="270" cy="370" r="150" fill="none" stroke="#DDD6FE" stroke-width="1.5" stroke-dasharray="6 6"/>
+  <circle cx="270" cy="370" r="115" fill="none" stroke="#C084FC" stroke-width="1.5" stroke-dasharray="3 5"/>
+
+  <!-- Expectant Mother Figure -->
+  <g filter="url(#cardShadow)">
+    <!-- Hair Behind -->
+    <path d="M 190 170 C 160 220 150 330 170 420 C 185 410 195 350 200 280 Z" fill="#4C1D95" opacity="0.85"/>
+
+    <!-- Flowing Maternal Dress -->
+    <path d="M 220 250 C 180 320 160 420 165 560 L 360 560 C 375 510 365 440 330 360 C 295 280 260 250 220 250 Z" fill="url(#maternalGown)"/>
+
+    <!-- Prominent Gravid Belly Curve -->
+    <path d="M 230 290 C 275 320 325 380 325 440 C 325 500 270 545 220 560 C 205 520 195 450 200 380 C 205 320 218 300 230 290 Z" fill="#A855F7" opacity="0.35"/>
+    <path d="M 230 290 C 280 325 330 385 330 440 C 330 495 280 545 225 560" fill="none" stroke="#FAF5FF" stroke-width="3.5" stroke-linecap="round"/>
+
+    <!-- Mother Head and Neck -->
+    <path d="M 225 180 C 220 215 228 245 238 260 C 248 250 252 230 248 190 Z" fill="url(#warmSkin)"/>
+    
+    <!-- Face (Profile with Serene Expression) -->
+    <path d="M 230 140 C 215 160 220 190 238 210 C 260 225 280 205 280 180 C 280 150 258 130 230 140 Z" fill="url(#warmSkin)"/>
+    
+    <!-- Facial Features -->
+    <path d="M 242 172 Q 248 178 254 172" fill="none" stroke="#581C87" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 250 192 Q 257 197 264 193" fill="none" stroke="#581C87" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="248" cy="184" rx="7" ry="4" fill="#F472B6" opacity="0.45"/>
+
+    <!-- Hair Crown -->
+    <path d="M 230 135 C 210 145 195 175 205 210 C 215 195 225 180 240 170 C 260 155 285 145 295 170 C 295 145 270 120 230 135 Z" fill="#4C1D95"/>
+
+    <!-- Mother Arms Cradling Gravid Bump -->
+    <!-- Upper Arm -->
+    <path d="M 215 270 C 190 320 200 370 230 405 C 255 430 290 435 315 410 C 310 395 290 395 270 405 C 245 415 225 390 220 360 C 218 330 225 300 215 270 Z" fill="url(#warmSkin)"/>
+    <!-- Hands Cupping Belly -->
+    <ellipse cx="295" cy="415" rx="18" ry="10" transform="rotate(-15 295 415)" fill="url(#warmSkin)"/>
+    <path d="M 285 415 C 295 422 305 420 312 410" fill="none" stroke="#7C3AED" stroke-width="1.5"/>
+
+    <!-- Heartbeat Signal Across Abdomen -->
+    <path d="M 170 380 L 220 380 L 228 355 L 238 410 L 248 370 L 256 385 L 264 380 L 330 380" fill="none" stroke="#FAF5FF" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
+  </g>
+
+  <!-- Bottom Informative Ribbon Badge -->
+  <g transform="translate(45, 570)">
+    <rect width="410" height="56" rx="16" fill="#FFFFFF" fill-opacity="0.95" stroke="#E9D5FF" stroke-width="1.5"/>
+    <circle cx="36" cy="28" r="16" fill="#FAF5FF"/>
+    <path d="M 28 28 L 33 28 L 36 21 L 40 35 L 44 26 L 47 28 L 52 28" fill="none" stroke="#9333EA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <text x="66" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="bold" fill="#581C87">
+      Longitudinal Maternal Twin &bull; 31.4w
+    </text>
+    <text x="66" y="42" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#7C3AED" opacity="0.85">
+      Real-time hemodynamics, fundal height, and risk forecasting
+    </text>
+  </g>
+</svg>

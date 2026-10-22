@@ -7,8 +7,9 @@
 [![Three.js](https://img.shields.io/badge/Three.js-r183-black.svg?style=flat-square&logo=three.js&logoColor=white)](https://threejs.org)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-FaceLandmarker-4285F4.svg?style=flat-square&logo=google&logoColor=white)](https://developers.google.com/mediapipe)
 [![Ollama](https://img.shields.io/badge/Ollama-llama3.2:3b-black.svg?style=flat-square&logo=ollama&logoColor=white)](https://ollama.com)
-[![Pytest](https://img.shields.io/badge/Tests-45%2F45%20Passing-success.svg?style=flat-square&logo=pytest&logoColor=white)](https://pytest.org)
-[![Vitest](https://img.shields.io/badge/Vitest-9%2F9%20Passing-brightgreen.svg?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Requesty API](https://img.shields.io/badge/Requesty%20API-Crane%20AI%20Chat-blueviolet.svg?style=flat-square)](https://requesty.ai)
+[![Pytest](https://img.shields.io/badge/Tests-65%2F65%20Passing-success.svg?style=flat-square&logo=pytest&logoColor=white)](https://pytest.org)
+[![Vitest](https://img.shields.io/badge/Vitest-15%2F15%20Passing-brightgreen.svg?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 ---
@@ -110,6 +111,28 @@ Expectant mothers under acute psychosocial stress experience sympathetic nervous
 - **Minimum Gestational Age Guard:** Strict $\ge 20.0$ weeks threshold enforced per American College of Obstetricians and Gynecologists (ACOG) and International Society for the Study of Hypertension in Pregnancy (ISSHP) criteria. Early pregnancies automatically display an `INSUFFICIENT_DATA` safety guard.
 - **Zero Temporal Data Leakage:** All predictive features are temporally isolated strictly at or before $t_{\text{prediction}}$. No future observation can ever contaminate baseline inference.
 
+### 6. 🦩 Dr. Crane 2D Doctor Mascot & Isolated Requesty AI Integration
+A friendly, professional 2D cartoon crane dressed as an obstetrician doctor (with small white coat, stethoscope, and medical bag):
+- **Exclusively Patient-Facing:** Guides expectant mothers through medication adherence, lab results, and care trajectories without cluttering clinical workflows.
+- **Requesty API Integration:** Uses Requesty router (`https://router.requesty.ai/v1`) exclusively for conversational chat, with complete architectural isolation from Ollama.
+- **Strict Clinical Safety:** Explains clinician-prescribed orders exactly as recorded; refuses autonomous prescribing, dose alterations, or dose doubling for missed doses; deflects prompt injections and non-medical queries.
+
+### 7. 💊 Clinician-Controlled Medication Management & Dose Notifications
+- **Explicit Patient Selector:** Doctors prescribe medications with explicit patient matching, specifying dose, route, frequency, start/end dates, instructions, and precautions.
+- **Automated Dose Notifications:** Synchronizes scheduled dose reminders (e.g., Labetalol 100 mg at 08:00 AM & 08:00 PM) to the patient's header notification center with interactive dosage confirmation.
+
+### 8. 🗓️ Doctor Availability Scheduling & Patient Booking
+- **Doctor Working Schedule Builder:** Doctors configure active weekly office hours (Mon–Sun), consultation slot durations (15–60 min), and break intervals, saved directly to the database.
+- **Patient & Dr. Crane Booking:** Patients choose open slots from their clinician's schedule; automated high-priority alerts notify the doctor upon confirmation.
+
+### 9. 🚨 Deterministic Emergency Warning Sign Triage & Immediate Escalation
+- **Pre-LLM Rule Evaluation:** Evaluates severe maternal warning signs (unresponsive severe headache, visual scotoma, RUQ epigastric pain, dyspnea, heavy bleeding, BP $\ge 160/110$) **before** any AI inference.
+- **Urgent Action Protocol:** Immediately triggers a prominent red emergency state directing the patient to emergency triage / 911 while dispatching high-priority alerts to Dr. Elena Vance.
+
+### 10. 🖼️ Calming Front Welcome Screen & Real Maternal Photography
+- **Photographic Gallery:** High-resolution imagery of expectant mothers and mothers with newborn infants illustrating longitudinal twin care from first trimester to healthy delivery.
+- **Origami Crane Background:** Calming, fluid 2D origami crane animations and delivery transitions.
+
 ---
 
 ## 💻 Tech Stack & Architecture
@@ -119,14 +142,17 @@ Expectant mothers under acute psychosocial stress experience sympathetic nervous
 - **Database:** SQLite (zero-config local) / PostgreSQL-ready via SQLAlchemy 2.0 ORM
 - **Security:** PBKDF2-HMAC-SHA256 password hashing, JWT Bearer tokens with query fallback, Role-Based Access Control (`clinician`, `patient`, `admin`)
 - **Document Processing:** PyMuPDF 2.0 (`pymupdf`), Tesseract OCR Adapter
-- **AI Intelligence:** Local Ollama (`llama3.2:3b`) **[Compulsory Core Requirement]** for private on-device antenatal clinical extraction, with secondary deterministic ontology fallback and coordinate bounding-box mapping
+- **Dual AI Architecture (Strict Isolation):**
+  - **Local Ollama (`llama3.2:3b`):** [Compulsory] Dedicated to private on-device antenatal clinical OCR extraction and lab observation parsing with zero external data egress.
+  - **Requesty API (`router.requesty.ai`):** Dedicated exclusively to the Dr. Crane AI Chatbot for patient conversational support with verified zero-cost (`google/gemma-4-31b-it`) and multi-model routing.
 
 ### Frontend
 - **Framework:** React 19 • TypeScript • Vite 8
-- **Styling:** Tailwind CSS v4 with custom Clinical Dark aesthetic (`#070B14`, `#5BE7E8`, `#628BFF`, `#E9B96E`)
+- **Styling:** Tailwind CSS v4 with custom Clinical Glassmorphic aesthetic
 - **3D Visualization:** Three.js r183 with custom WebGL GLSL vertex & fragment shaders
 - **Computer Vision:** Google MediaPipe Face Landmarker WebAssembly + Custom CHROM rPPG Engine
 - **Data Visualization:** Recharts for longitudinal hemodynamic trajectories and feature contribution waterfalls
+- **Mascot & Animations:** 2D Dr. Crane Doctor Mascot SVG vector system with dynamic clinical expressions (`caring`, `attentive`, `celebrating`, `alert`)
 
 ---
 
@@ -251,11 +277,11 @@ For instant evaluation, the platform includes pre-configured synthetic maternal 
 The codebase includes exhaustive automated regression and unit tests:
 
 ```bash
-# Run 45 Backend Pytest Tests (100% Passing)
+# Run 65 Backend Pytest Tests (100% Passing)
 cd backend
 python -m pytest tests/ -v
 
-# Run 9 Frontend Vitest Tests (100% Passing)
+# Run 15 Frontend Vitest Tests (100% Passing)
 cd frontend
 npx vitest run
 
@@ -264,9 +290,9 @@ npm run build
 ```
 
 ```
-============================= 45 passed in 43.81s =============================
-Test Files  1 passed (1)
-     Tests  9 passed (9)
+============================= 65 passed in 87.21s =============================
+Test Files  2 passed (2)
+     Tests  15 passed (15)
 Vite Production Build: 0 errors
 ```
 

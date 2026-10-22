@@ -1,5 +1,5 @@
-from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
@@ -18,19 +18,25 @@ router = APIRouter(prefix="/clinician", tags=["Clinician Workspace"])
 
 @router.get("/review-queue")
 def get_review_queue(
+    patient_id: Optional[str] = Query(None, description="Optional patient ID filter"),
     current_user: User = Depends(require_clinician),
     db: Session = Depends(get_db)
 ):
     """
     Returns pending items for clinician review:
-    1. Unreviewed or pending documents
-    2. Extracted fields with UNREVIEWED status or ALERT validation
-    3. Patients with HIGH risk predictions
+    1. Unreviewed or pending documents (optionally filtered by patient_id)
+    2. Extracted fields with UNREVIEWED status or ALERT validation (optionally filtered by patient_id)
+    3. Patients with HIGH risk predictions (optionally filtered by patient_id)
     """
     # 1. Documents pending review
+    doc_query = db.query(MedicalDocument).filter(
+        MedicalDocument.processing_status.in_(["EXTRACTED", "REVIEW_PENDING", "PROCESSING"])
+    )
+    if patient_id:
+        doc_query = doc_query.filter(MedicalDocument.patient_id == patient_id)
+
     pending_docs = (
-        db.query(MedicalDocument)
-        .filter(MedicalDocument.processing_status.in_(["EXTRACTED", "REVIEW_PENDING", "PROCESSING"]))
+        doc_query
         .order_by(desc(MedicalDocument.created_at))
         .limit(20)
         .all()
@@ -58,9 +64,12 @@ def get_review_queue(
         })
 
     # 2. Uncertain or alert fields needing confirmation
+    field_query = db.query(ExtractedField).filter(ExtractedField.review_status == "UNREVIEWED")
+    if patient_id:
+        field_query = field_query.filter(ExtractedField.patient_id == patient_id)
+
     alert_fields = (
-        db.query(ExtractedField)
-        .filter(ExtractedField.review_status == "UNREVIEWED")
+        field_query
         .order_by(desc(ExtractedField.created_at))
         .limit(30)
         .all()
@@ -87,9 +96,12 @@ def get_review_queue(
         })
 
     # 3. High risk patients requiring clinical attention
+    risk_query = db.query(RiskPrediction).filter(RiskPrediction.risk_category == "HIGH")
+    if patient_id:
+        risk_query = risk_query.filter(RiskPrediction.patient_id == patient_id)
+
     high_risk_predictions = (
-        db.query(RiskPrediction)
-        .filter(RiskPrediction.risk_category == "HIGH")
+        risk_query
         .order_by(desc(RiskPrediction.prediction_timestamp))
         .limit(10)
         .all()
@@ -110,6 +122,7 @@ def get_review_queue(
         })
 
     return {
+        "filtered_patient_id": patient_id,
         "pending_documents_count": len(doc_items),
         "pending_documents": doc_items,
         "unreviewed_fields_count": len(field_items),

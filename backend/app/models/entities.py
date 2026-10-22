@@ -23,6 +23,9 @@ class User(Base):
     
     patient_profile = relationship("PatientProfile", back_populates="user", uselist=False)
     audit_events = relationship("AuditEvent", back_populates="user")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    doctor_availabilities = relationship("DoctorAvailability", back_populates="doctor", cascade="all, delete-orphan")
+    doctor_unavailabilities = relationship("DoctorUnavailability", back_populates="doctor", cascade="all, delete-orphan")
 
 class PatientProfile(Base):
     __tablename__ = "patient_profiles"
@@ -58,6 +61,11 @@ class PatientProfile(Base):
     devices = relationship("DeviceConnection", back_populates="patient", cascade="all, delete-orphan")
     measurements = relationship("DeviceMeasurement", back_populates="patient", cascade="all, delete-orphan")
     camera_sessions = relationship("CameraResearchSession", back_populates="patient", cascade="all, delete-orphan")
+    medication_orders = relationship("MedicationOrder", back_populates="patient", cascade="all, delete-orphan")
+    dose_logs = relationship("MedicationDoseLog", back_populates="patient", cascade="all, delete-orphan")
+    appointments = relationship("Appointment", back_populates="patient", cascade="all, delete-orphan")
+    emergency_events = relationship("EmergencyEvent", back_populates="patient", cascade="all, delete-orphan")
+    ai_chat_messages = relationship("AIChatMessage", back_populates="patient", cascade="all, delete-orphan")
 
 class PregnancyEpisode(Base):
     __tablename__ = "pregnancy_episodes"
@@ -357,3 +365,162 @@ class CameraResearchSession(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now)
 
     patient = relationship("PatientProfile", back_populates="camera_sessions")
+
+class MedicationOrder(Base):
+    __tablename__ = "medication_orders"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    prescribing_clinician_id = Column(String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    medication_name = Column(String(150), nullable=False)  # e.g. Labetalol, Nifedipine Extended Release
+    strength = Column(String(50), nullable=True)  # e.g. 100 mg, 30 mg
+    formulation = Column(String(100), nullable=True)  # e.g. Oral tablet
+    prescribed_dose = Column(String(100), nullable=False)  # e.g. 100 mg
+    route = Column(String(50), default="oral")  # oral, intravenous, subcutaneous
+    frequency = Column(String(100), nullable=False)  # e.g. twice daily, once daily at bedtime
+    timing_json = Column(Text, nullable=True)  # e.g. ["08:00", "20:00"]
+    start_date = Column(String(20), nullable=False)  # YYYY-MM-DD
+    end_date = Column(String(20), nullable=True)  # YYYY-MM-DD
+    clinician_instructions = Column(Text, nullable=False)
+    warnings_precautions = Column(Text, nullable=True)
+    status = Column(String(50), default="DRAFT", index=True)  # DRAFT, APPROVED, DISCONTINUED, EXPIRED
+    version = Column(Integer, default=1)
+    approved_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    discontinued_at = Column(DateTime(timezone=True), nullable=True)
+    discontinued_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    patient = relationship("PatientProfile", back_populates="medication_orders")
+    prescribing_clinician = relationship("User", foreign_keys=[prescribing_clinician_id])
+    approver = relationship("User", foreign_keys=[approved_by_id])
+    dose_logs = relationship("MedicationDoseLog", back_populates="order", cascade="all, delete-orphan")
+
+class MedicationDoseLog(Base):
+    __tablename__ = "medication_dose_logs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    order_id = Column(String(36), ForeignKey("medication_orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    scheduled_time = Column(DateTime(timezone=True), nullable=False)
+    logged_time = Column(DateTime(timezone=True), default=utc_now)
+    status = Column(String(50), default="TAKEN")  # TAKEN, MISSED, SKIPPED
+    patient_notes = Column(Text, nullable=True)
+    reported_side_effects = Column(Text, nullable=True)
+    reported_side_effects_severity = Column(String(50), nullable=True)  # MILD, MODERATE, SEVERE
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    order = relationship("MedicationOrder", back_populates="dose_logs")
+    patient = relationship("PatientProfile", back_populates="dose_logs")
+
+class DoctorAvailability(Base):
+    __tablename__ = "doctor_availabilities"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    doctor_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    day_of_week = Column(Integer, nullable=False)  # 0=Monday, 6=Sunday
+    start_time = Column(String(10), default="09:00")
+    end_time = Column(String(10), default="17:00")
+    slot_duration_minutes = Column(Integer, default=30)
+    break_start = Column(String(10), default="12:00")
+    break_end = Column(String(10), default="13:00")
+    timezone = Column(String(50), default="UTC")
+    is_active = Column(Boolean, default=True)
+    max_daily_capacity = Column(Integer, default=12)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    doctor = relationship("User", back_populates="doctor_availabilities")
+
+class DoctorUnavailability(Base):
+    __tablename__ = "doctor_unavailabilities"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    doctor_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    start_datetime = Column(DateTime(timezone=True), nullable=False)
+    end_datetime = Column(DateTime(timezone=True), nullable=False)
+    reason = Column(String(200), default="Scheduled Leave")
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    doctor = relationship("User", back_populates="doctor_unavailabilities")
+
+class Appointment(Base):
+    __tablename__ = "appointments"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    doctor_id = Column(String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    start_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    end_time = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(50), default="SCHEDULED", index=True)  # SCHEDULED, CONFIRMED, CANCELLED, COMPLETED
+    appointment_type = Column(String(50), default="in_person")  # in_person, telehealth, urgent_review
+    reason = Column(Text, nullable=False)
+    booking_channel = Column(String(50), default="ai_assistant")  # ai_assistant, patient_portal, clinician_manual
+    cancellation_reason = Column(Text, nullable=True)
+    cancelled_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    patient = relationship("PatientProfile", back_populates="appointments")
+    doctor = relationship("User", foreign_keys=[doctor_id])
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="SET NULL"), nullable=True)
+    category = Column(String(50), nullable=False, index=True)  # MEDICATION_REMINDER, APPOINTMENT_CONFIRMED, EMERGENCY_ESCALATION, etc.
+    title = Column(String(200), nullable=False)
+    message = Column(Text, nullable=False)
+    priority = Column(String(20), default="NORMAL")  # LOW, NORMAL, HIGH, EMERGENCY
+    link_url = Column(String(255), nullable=True)
+    is_read = Column(Boolean, default=False, index=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    delivery_status = Column(String(50), default="DELIVERED")  # SENT, DELIVERED, ACKNOWLEDGED, FAILED
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, index=True)
+
+    user = relationship("User", back_populates="notifications")
+
+class EmergencyEvent(Base):
+    __tablename__ = "emergency_events"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    reported_by_user_id = Column(String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    assigned_clinician_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    matched_rules_json = Column(Text, nullable=False)  # JSON list of triggered rules
+    reported_symptoms = Column(Text, nullable=False)
+    severity_level = Column(String(50), default="CRITICAL_EMERGENCY")  # CRITICAL_EMERGENCY, HIGH_PRIORITY_URGENT
+    status = Column(String(50), default="ACTIVE", index=True)  # ACTIVE, ACKNOWLEDGED, ESCALATED_BACKUP, RESOLVED
+    acknowledged_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    resolution_notes = Column(Text, nullable=True)
+    escalated_at = Column(DateTime(timezone=True), nullable=True)
+    delivery_attempts = Column(Integer, default=1)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    patient = relationship("PatientProfile", back_populates="emergency_events")
+    reporter = relationship("User", foreign_keys=[reported_by_user_id])
+    assigned_clinician = relationship("User", foreign_keys=[assigned_clinician_id])
+    acknowledged_by = relationship("User", foreign_keys=[acknowledged_by_id])
+
+class AIChatMessage(Base):
+    __tablename__ = "ai_chat_messages"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    patient_id = Column(String(36), ForeignKey("patient_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    sender_type = Column(String(20), nullable=False)  # patient, assistant, clinician, system
+    message_text = Column(Text, nullable=False)
+    intent_category = Column(String(50), nullable=True)
+    is_emergency = Column(Boolean, default=False)
+    emergency_event_id = Column(String(36), ForeignKey("emergency_events.id", ondelete="SET NULL"), nullable=True)
+    action_taken_json = Column(Text, nullable=True)
+    sources_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, index=True)
+
+    patient = relationship("PatientProfile", back_populates="ai_chat_messages")
+    user = relationship("User")
+    emergency_event = relationship("EmergencyEvent")

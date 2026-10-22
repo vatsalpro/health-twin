@@ -346,8 +346,14 @@ def review_extracted_field(
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
-    decision = review_req.decision.upper()
-    if decision not in ("ACCEPT", "REJECT", "MODIFY"):
+    decision = review_req.decision.upper().strip()
+    if decision in ("ACCEPTED", "ACCEPT"):
+        decision = "ACCEPT"
+    elif decision in ("REJECTED", "REJECT"):
+        decision = "REJECT"
+    elif decision in ("MODIFIED", "MODIFY"):
+        decision = "MODIFY"
+    else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Decision must be ACCEPT, REJECT, or MODIFY")
 
     if decision == "MODIFY":

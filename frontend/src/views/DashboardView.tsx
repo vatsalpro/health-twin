@@ -33,8 +33,10 @@ import {
   Minus,
   ClipboardList,
   ShieldCheck,
-  Stethoscope
+  Stethoscope,
+  Pill,
 } from 'lucide-react';
+import { CraneDoctorMascot } from '../components/CraneDoctorMascot';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -198,7 +200,7 @@ export const DashboardView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Patient Clinical Context Banner */}
-      <div className="bg-white p-5 md:p-6 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="glass-panel p-5 md:p-6 rounded-2xl shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
             <h2 className="text-2xl font-bold tracking-tight text-slate-900">
@@ -301,6 +303,53 @@ export const DashboardView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Dr. Crane AI Doctor & Care Coordination Banner (Patients Only) */}
+      {!isClinician && (
+      <div className="glass-panel p-5 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 border border-purple-200/90 shadow-xs">
+        <div className="flex items-center gap-4">
+          <div className="p-1 rounded-2xl bg-purple-100/60 border border-purple-200 shrink-0">
+            <CraneDoctorMascot expression="friendly" size="md" showBadge={false} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-black text-purple-950 text-base">Dr. Crane AI Doctor Assistant</h3>
+              <Badge variant="purple" size="sm">Grounded Care Plan</Badge>
+            </div>
+            <p className="text-xs text-slate-600 mt-1 max-w-xl leading-relaxed">
+              Have questions about your prescribed medications, blood pressure trends, or upcoming visits?
+              Dr. Crane provides instant, clinician-approved answers and 24/7 emergency escalation.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/medications')}
+            icon={<Pill className="w-3.5 h-3.5 text-purple-700" />}
+          >
+            My Medications
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/appointments')}
+            icon={<Calendar className="w-3.5 h-3.5 text-teal-700" />}
+          >
+            Appointments
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => navigate('/ai-assistant')}
+            icon={<Sparkles className="w-3.5 h-3.5 text-white" />}
+          >
+            Ask Dr. Crane
+          </Button>
+        </div>
+      </div>
+      )}
 
       {/* Primary KPI Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -596,7 +645,7 @@ export const DashboardView: React.FC = () => {
             </div>
           </CardHeader>
 
-          <CardContent className="h-72 w-full relative bg-slate-50 rounded-xl overflow-hidden border border-slate-100">
+          <CardContent className="h-72 w-full relative bg-purple-50/20 backdrop-blur-xs rounded-2xl overflow-hidden border border-purple-100/50">
             <MaternalTwin3D
               gestationalAgeWeeks={gaWeeks || 28.0}
               sbp={twin?.sbp || undefined}
@@ -849,7 +898,7 @@ export const DashboardView: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div
           onClick={() => navigate(isClinician ? '/simulation-lab' : '/pregnancy-timeline')}
-          className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs hover:border-sky-400 hover:shadow-sm transition-all cursor-pointer group"
+          className="glass-panel p-5 rounded-2xl shadow-xs hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between">
             <div className="w-9 h-9 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-700">
@@ -869,7 +918,7 @@ export const DashboardView: React.FC = () => {
 
         <div
           onClick={() => navigate('/measurements-devices')}
-          className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs hover:border-teal-400 hover:shadow-sm transition-all cursor-pointer group"
+          className="glass-panel p-5 rounded-2xl shadow-xs hover:border-teal-400 hover:shadow-md transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between">
             <div className="w-9 h-9 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700">
@@ -889,7 +938,7 @@ export const DashboardView: React.FC = () => {
 
         <div
           onClick={() => navigate(isClinician ? '/medical-records' : '/maternal-twin')}
-          className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs hover:border-slate-400 hover:shadow-sm transition-all cursor-pointer group"
+          className="glass-panel p-5 rounded-2xl shadow-xs hover:border-purple-400 hover:shadow-md transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between">
             <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700">

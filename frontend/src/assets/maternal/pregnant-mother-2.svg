@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 650" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDF4FF"/>
+      <stop offset="50%" stop-color="#F5F3FF"/>
+      <stop offset="100%" stop-color="#EDE9FE"/>
+    </linearGradient>
+
+    <linearGradient id="purpleRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9333EA"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+
+    <radialGradient id="ultrasoundGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#C084FC" stop-opacity="0.5"/>
+      <stop offset="70%" stop-color="#DDD6FE" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#FAF5FF" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="softShadow2" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#8B5CF6" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+
+  <rect width="500" height="650" rx="28" fill="url(#bgGrad2)"/>
+  <rect width="496" height="646" x="2" y="2" rx="26" fill="none" stroke="#E9D5FF" stroke-width="2"/>
+
+  <!-- Radial Telemetry Rings -->
+  <circle cx="260" cy="350" r="190" fill="url(#ultrasoundGlow)"/>
+  <circle cx="260" cy="350" r="160" fill="none" stroke="#E9D5FF" stroke-width="1.5" stroke-dasharray="4 6"/>
+  <circle cx="260" cy="350" r="110" fill="none" stroke="#DDD6FE" stroke-width="2" stroke-dasharray="3 5"/>
+
+  <!-- Elegant Maternal Line-Art Silhouette -->
+  <g filter="url(#softShadow2)">
+    <!-- Back & Spine -->
+    <path d="M 190 180 C 170 240 160 320 170 420 C 180 480 185 540 190 580" fill="none" stroke="#7C3AED" stroke-width="3" stroke-linecap="round"/>
+    
+    <!-- Head & Neck -->
+    <path d="M 230 110 C 260 120 265 145 255 170 C 250 185 240 190 230 195 L 230 230" fill="none" stroke="#7C3AED" stroke-width="3" stroke-linecap="round"/>
+    <ellipse cx="235" cy="145" rx="28" ry="36" fill="#EDE9FE" opacity="0.6"/>
+
+    <!-- Anterior Chest & Gestational Belly Curve -->
+    <path d="M 230 230 C 255 250 260 270 250 300 C 285 330 320 380 320 440 C 320 500 280 550 220 575" fill="none" stroke="#9333EA" stroke-width="3.5" stroke-linecap="round"/>
+    
+    <!-- Warm Infill for Gestational Curve -->
+    <path d="M 250 300 C 285 330 320 380 320 440 C 320 500 280 550 220 575 C 200 540 190 470 195 400 C 200 340 225 310 250 300 Z" fill="#F3E8FF" opacity="0.5"/>
+
+    <!-- Gentle Hands Cupping Belly -->
+    <path d="M 220 350 C 260 370 290 405 285 435 C 280 445 260 435 240 415" fill="none" stroke="#7C3AED" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 220 495 C 265 510 295 480 290 460 C 285 450 265 460 235 480" fill="none" stroke="#7C3AED" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- Glowing Digital Twin Core Pulse -->
+  <circle cx="255" cy="440" r="28" fill="#7C3AED" opacity="0.15"/>
+  <circle cx="255" cy="440" r="14" fill="#9333EA" opacity="0.3"/>
+  <circle cx="255" cy="440" r="5" fill="#7C3AED"/>
+
+  <!-- Telemetry Tag Badges -->
+  <g transform="translate(35, 45)">
+    <rect width="200" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.9" stroke="#E9D5FF" stroke-width="1.5"/>
+    <circle cx="24" cy="21" r="7" fill="#9333EA"/>
+    <circle cx="24" cy="21" r="3" fill="#FFFFFF"/>
+    <text x="42" y="19" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#6B7280">CONTINUOUS TWIN</text>
+    <text x="42" y="32" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#4C1D95">ULTRASOUND ALIGNED</text>
+  </g>
+
+  <g transform="translate(260, 530)">
+    <rect width="205" height="52" rx="18" fill="#FFFFFF" fill-opacity="0.95" stroke="#E9D5FF" stroke-width="1.5" filter="url(#softShadow2)"/>
+    <text x="20" y="23" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#6B7280">PREDICTIVE RISK</text>
+    <text x="20" y="39" font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="#059669">LOW RISK <tspan font-size="10" font-weight="500" fill="#6B7280">&bull; 14-DAY STABLE</tspan></text>
+  </g>
+</svg>
