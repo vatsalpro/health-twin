@@ -351,6 +351,61 @@ export const DashboardView: React.FC = () => {
       </div>
       )}
 
+      {/* Clinician Care Team Oversight & Decision Support Banner (Clinicians Only) */}
+      {isClinician && (
+      <div className="glass-panel p-5 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 border border-indigo-200/90 shadow-xs bg-gradient-to-r from-purple-50/70 via-indigo-50/50 to-white">
+        <div className="flex items-center gap-4">
+          <div className="p-2 rounded-2xl bg-indigo-100 border border-indigo-200 shrink-0">
+            <Stethoscope className="w-7 h-7 text-indigo-700" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-black text-indigo-950 text-base">Clinician Clinical Oversight &amp; Decision Support</h3>
+              <Badge variant="purple" size="sm">Active Care Team</Badge>
+            </div>
+            <p className="text-xs text-slate-600 mt-1 max-w-xl leading-relaxed">
+              Subject: <strong className="text-slate-900">{selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name} (${selectedPatient.mrn})` : 'Selected Patient'}</strong>.
+              Review longitudinal risk projections, approve pending medication orders, configure clinical consultation schedules, or audit AI patient guidance.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/medications')}
+            icon={<Pill className="w-3.5 h-3.5 text-purple-700" />}
+          >
+            Prescribe Orders
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/appointments')}
+            icon={<Calendar className="w-3.5 h-3.5 text-teal-700" />}
+          >
+            Doctor Schedule
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/ai-assistant')}
+            icon={<Sparkles className="w-3.5 h-3.5 text-indigo-700" />}
+          >
+            Audit Patient AI
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => navigate('/clinician/review-queue')}
+            icon={<ClipboardList className="w-3.5 h-3.5 text-white" />}
+          >
+            Open Review Queue
+          </Button>
+        </div>
+      </div>
+      )}
+
       {/* Primary KPI Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Blood Pressure & MAP */}

@@ -1,10 +1,12 @@
 import json
 import logging
+import httpx
 from datetime import datetime, timezone, timedelta, date, time
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
+from app.core.config import settings
 from app.models.entities import (
     MedicationOrder,
     MedicationDoseLog,
@@ -34,15 +36,35 @@ MATERNAL_DRUG_MONOGRAPHS: Dict[str, Dict[str, Any]] = {
             "Take with or immediately after meals to improve gastrointestinal tolerance and maintain consistent absorption. "
             "Do not stop taking or change the dose abruptly without clinical direction."
         ),
+        "pregnancy_safety_notes": (
+            "Extensively studied and established as safe throughout second and third trimesters. "
+            "Does not impair fetal growth or cause congenital malformations when monitored clinically."
+        ),
+        "pregnancy_safety_summary": (
+            "Extensively studied and established as safe throughout second and third trimesters. "
+            "Does not impair fetal growth or cause congenital malformations when monitored clinically."
+        ),
+        "common_side_effects": [
+            "Mild dizziness or lightheadedness when standing",
+            "Maternal fatigue or sluggishness",
+            "Transient scalp tingling sensation",
+            "Nausea or stomach upset",
+            "Nasal congestion"
+        ],
+        "serious_warning_signs": [
+            "Resting maternal heart rate under 55 bpm",
+            "Wheezing, bronchospasm, or shortness of breath",
+            "Severe lightheadedness or sudden fainting",
+            "Cold, pale hands or feet"
+        ],
         "key_warnings": [
             "Report heart rate under 55 bpm, severe dizziness, lightheadedness, or wheezing.",
             "Contraindicated in patients with active maternal asthma, uncompensated cardiac failure, or severe bradycardia.",
             "Do not skip doses or double up if a dose is missed."
         ],
-        "pregnancy_safety_summary": (
-            "Extensively studied and established as safe throughout second and third trimesters. "
-            "Does not impair fetal growth or cause congenital malformations when monitored clinically."
-        )
+        "missed_dose_guidance": "Take as soon as remembered unless it is nearly time for your next scheduled dose. Never double up doses.",
+        "clinical_reference": "ACOG Practice Bulletin No. 222 (Gestational Hypertension and Preeclampsia); ISSHP 2021 Clinical Standards.",
+        "source": "verified_clinician_library"
     },
     "nifedipine": {
         "generic_name": "Nifedipine Extended Release",
@@ -56,15 +78,35 @@ MATERNAL_DRUG_MONOGRAPHS: Dict[str, Dict[str, Any]] = {
             "Swallow tablets whole once daily with water. Do not crush, chew, or divide extended-release tablets. "
             "Avoid grapefruit or grapefruit juice, which can substantially increase drug concentration."
         ),
+        "pregnancy_safety_notes": (
+            "Strong evidence profile supporting safety and efficacy in pregnancy; preferred oral agent "
+            "especially when beta-blockers like Labetalol are contraindicated by maternal asthma."
+        ),
+        "pregnancy_safety_summary": (
+            "Strong evidence profile supporting safety and efficacy in pregnancy; preferred oral agent "
+            "especially when beta-blockers like Labetalol are contraindicated by maternal asthma."
+        ),
+        "common_side_effects": [
+            "Peripheral ankle or foot swelling (edema)",
+            "Warmth or redness in the face/neck (flushing)",
+            "Mild transient headache upon initiation",
+            "Mild dizziness or lightheadedness",
+            "Occasional rapid heart rate (palpitations)"
+        ],
+        "serious_warning_signs": [
+            "Sudden severe lightheadedness or fainting spells",
+            "Chest pain, pressure, or irregular heart palpitations",
+            "Severe shortness of breath",
+            "Extreme facial swelling or hives"
+        ],
         "key_warnings": [
             "May cause mild peripheral edema, flushing, or transient headache upon initiation.",
             "Report severe sudden lightheadedness, palpitations, or fainting.",
             "Do not administer sublingual immediate-release nifedipine due to precipitous hypotensive risk."
         ],
-        "pregnancy_safety_summary": (
-            "Strong evidence profile supporting safety and efficacy in pregnancy; preferred oral agent "
-            "especially when beta-blockers like Labetalol are contraindicated by asthma."
-        )
+        "missed_dose_guidance": "Take the missed dose on the same day as soon as remembered. Do not take two doses at the same time.",
+        "clinical_reference": "ACOG Practice Bulletin No. 222; SMFM Clinical Guideline (Antihypertensive Therapy in Pregnancy).",
+        "source": "verified_clinician_library"
     },
     "methyldopa": {
         "generic_name": "Methyldopa",
@@ -76,13 +118,32 @@ MATERNAL_DRUG_MONOGRAPHS: Dict[str, Dict[str, Any]] = {
         "standard_administration": (
             "Take consistently with or without food. Mild sedation may occur during dose initiation or titration; evening dosing is often preferred."
         ),
+        "pregnancy_safety_notes": (
+            "Longest established track record of pediatric safety through long-term childhood neurodevelopmental follow-up studies."
+        ),
+        "pregnancy_safety_summary": (
+            "Longest established track record of pediatric safety through long-term childhood neurodevelopmental follow-up studies."
+        ),
+        "common_side_effects": [
+            "Drowsiness, fatigue, or sedation (usually transient)",
+            "Dry mouth",
+            "Nasal stuffiness",
+            "Mild headache",
+            "Mild lightheadedness upon standing"
+        ],
+        "serious_warning_signs": [
+            "Persistent depressed mood, extreme sadness, or emotional changes",
+            "Yellowing of skin or eyes (jaundice)",
+            "Unexplained persistent fever or chills",
+            "Pale stools or unusually dark tea-colored urine"
+        ],
         "key_warnings": [
             "Report persistent depressive mood, jaundice, unexplained fever, or severe fatigue.",
             "Periodic monitoring of liver function tests and complete blood counts is clinically indicated."
         ],
-        "pregnancy_safety_summary": (
-            "Longest established track record of pediatric safety through long-term childhood neurodevelopmental follow-up studies."
-        )
+        "missed_dose_guidance": "Take as soon as remembered. If close to next dose, skip and resume regular schedule. Never double up.",
+        "clinical_reference": "ACOG Clinical Practice Guideline No. 5; CHIPS Randomized Clinical Trial Longitudinal Follow-Up.",
+        "source": "verified_clinician_library"
     },
     "aspirin": {
         "generic_name": "Low-Dose Aspirin (81 mg - 150 mg)",
@@ -96,15 +157,33 @@ MATERNAL_DRUG_MONOGRAPHS: Dict[str, Dict[str, Any]] = {
             "Take once daily in the evening at bedtime with a glass of water and food. Bedtime dosing has demonstrated "
             "superior chronotherapeutic reduction in maternal blood pressure."
         ),
+        "pregnancy_safety_notes": (
+            "Low-dose aspirin (81-150 mg) is proven safe in pregnancy and significantly reduces the incidence of "
+            "early-onset preeclampsia, preterm birth, and intrauterine growth restriction without increasing maternal hemorrhagic risk."
+        ),
+        "pregnancy_safety_summary": (
+            "Low-dose aspirin (81-150 mg) is proven safe in pregnancy and significantly reduces the incidence of "
+            "early-onset preeclampsia, preterm birth, and intrauterine growth restriction without increasing maternal hemorrhagic risk."
+        ),
+        "common_side_effects": [
+            "Mild stomach upset or heartburn",
+            "Mild indigestion after taking tablet",
+            "Occasional mild nausea"
+        ],
+        "serious_warning_signs": [
+            "Unusual or unexplained bruising or active bleeding (gums, nosebleeds)",
+            "Black, tarry stools or blood in vomit",
+            "Severe, sharp abdominal pain",
+            "Ringing in ears (tinnitus) or hearing changes"
+        ],
         "key_warnings": [
             "Do not substitute high-dose analgesic aspirin or other NSAIDs (ibuprofen, naproxen).",
             "Report any unexplained active bleeding, blood in stool, or persistent gastric pain.",
             "Usually held prior to planned delivery (typically 36-37 weeks) per obstetrician instructions."
         ],
-        "pregnancy_safety_summary": (
-            "Low-dose aspirin (81-150 mg) is proven safe in pregnancy and significantly reduces the incidence of "
-            "early-onset preeclampsia, preterm birth, and intrauterine growth restriction without increasing maternal hemorrhagic risk."
-        )
+        "missed_dose_guidance": "Take the missed dose the following evening with dinner or at bedtime. Do not double doses.",
+        "clinical_reference": "USPSTF Recommendation Statement (2021); ACOG Committee Opinion No. 743 (Low-Dose Aspirin in Pregnancy).",
+        "source": "verified_clinician_library"
     },
     "prenatal_vitamins": {
         "generic_name": "Prenatal Multivitamin with Folic Acid and Iron",
@@ -118,23 +197,173 @@ MATERNAL_DRUG_MONOGRAPHS: Dict[str, Dict[str, Any]] = {
             "Take once daily with a meal or snack. If morning sickness or nausea occurs, take before sleep with a light snack. "
             "Adequate dietary fiber and water intake helps counteract iron-induced constipation."
         ),
+        "pregnancy_safety_notes": "Universally recommended foundational nutritional support across all trimesters.",
+        "pregnancy_safety_summary": "Universally recommended foundational nutritional support across all trimesters.",
+        "common_side_effects": [
+            "Dark or greenish stool discoloration (expected harmless effect of iron)",
+            "Mild constipation",
+            "Mild nausea or stomach discomfort",
+            "Mild bloating"
+        ],
+        "serious_warning_signs": [
+            "Severe persistent vomiting or inability to tolerate food/liquids",
+            "Severe sharp abdominal pain",
+            "Signs of allergic reaction (rash, hives, difficulty breathing)"
+        ],
         "key_warnings": [
             "Stool may appear dark or green, which is normal with iron supplementation.",
             "Do not take additional separate iron or calcium supplements unless specifically directed by clinician."
         ],
-        "pregnancy_safety_summary": "Universally recommended foundational nutritional support across all trimesters."
+        "missed_dose_guidance": "Take the missed dose when remembered or simply take your regular tablet the following morning.",
+        "clinical_reference": "ACOG Clinical Consensus No. 1; CDC Folic Acid Clinical Guidance for Maternal Health.",
+        "source": "verified_clinician_library"
+    },
+    "calcium": {
+        "generic_name": "Calcium Carbonate (Maternal Supplementation)",
+        "drug_class": "Essential Dietary Mineral / Preeclampsia Prophylaxis",
+        "intended_use": (
+            "WHO and ACOG guideline-recommended dietary supplementation to reduce preeclampsia incidence "
+            "in pregnant individuals with low baseline dietary calcium intake or elevated baseline cardiovascular risk."
+        ),
+        "standard_administration": (
+            "Take 1,000 mg - 1,500 mg elemental calcium daily divided into 2-3 doses with meals for optimal absorption. "
+            "Separate administration from prenatal iron supplements by at least 2 hours to prevent absorption competition."
+        ),
+        "pregnancy_safety_notes": (
+            "Established safe and beneficial in pregnancy; proven reduction in preeclampsia risk and severe maternal morbidity."
+        ),
+        "pregnancy_safety_summary": (
+            "Established safe and beneficial in pregnancy; proven reduction in preeclampsia risk and severe maternal morbidity."
+        ),
+        "common_side_effects": [
+            "Mild constipation",
+            "Mild abdominal gas or bloating",
+            "Mild belching"
+        ],
+        "serious_warning_signs": [
+            "Severe nausea, vomiting, or persistent loss of appetite",
+            "Sharp flank or lower back pain (kidney stones)",
+            "Extreme muscle weakness, confusion, or extreme thirst (hypercalcemia)"
+        ],
+        "key_warnings": [
+            "Do not exceed 2,500 mg total elemental calcium per day from all sources.",
+            "Separate from iron supplements by at least 2 hours.",
+            "Report symptoms of kidney stones or severe constipation."
+        ],
+        "missed_dose_guidance": "Take with your next meal. Do not take more than your prescribed daily amount at one time.",
+        "clinical_reference": "WHO Recommendations on Calcium Supplementation for Preeclampsia Prevention; ACOG Practice Bulletin No. 222.",
+        "source": "verified_clinician_library"
     }
 }
 
 class MedicationService:
     @staticmethod
     def get_drug_monograph(medication_name: str) -> Optional[Dict[str, Any]]:
-        """Look up verified evidence-based clinical reference for a medication."""
+        """Look up verified evidence-based clinical reference for a medication with fuzzy keyword matching."""
         name_lower = medication_name.lower().strip()
+        tokens = [t for t in name_lower.replace("-", " ").replace("(", " ").replace(")", " ").split() if len(t) > 2]
         for key, monograph in MATERNAL_DRUG_MONOGRAPHS.items():
+            generic_lower = monograph.get("generic_name", "").lower()
             if key in name_lower or name_lower in key:
                 return monograph
+            if generic_lower in name_lower or name_lower in generic_lower:
+                return monograph
+            for token in tokens:
+                if token in key or token in generic_lower:
+                    return monograph
         return None
+
+    @classmethod
+    async def get_or_generate_drug_monograph(cls, medication_name: str) -> Dict[str, Any]:
+        """
+        Retrieves evidence-based maternal monograph.
+        Tier 1: Looks up in verified library MATERNAL_DRUG_MONOGRAPHS (with fuzzy keyword matching).
+        Tier 2: Calls local Ollama (llama3.2:3b) to generate structured ACOG-aligned monograph on-demand.
+        Tier 3: Gracefully falls back to structured clinical default template if Ollama is unreachable.
+        """
+        # 1. Check local verified library
+        existing = cls.get_drug_monograph(medication_name)
+        if existing:
+            return existing
+
+        clean_name = medication_name.strip()
+        clean_key = clean_name.lower().replace(" ", "_").replace("-", "_")
+
+        # 2. Query Local Ollama (llama3.2:3b)
+        ollama_url = f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate"
+        prompt = (
+            f"You are an expert maternal-fetal clinical pharmacologist.\n"
+            f"Generate an evidence-based pregnancy drug monograph for '{clean_name}'.\n"
+            f"Adhere strictly to ACOG and SMFM clinical standards.\n"
+            f"Return ONLY valid JSON matching this schema:\n"
+            f"{{\n"
+            f'  "generic_name": "{clean_name.title()}",\n'
+            f'  "drug_class": "Exact drug class",\n'
+            f'  "intended_use": "Clinical purpose and indication during pregnancy",\n'
+            f'  "standard_administration": "Typical dosage and instructions (oral, with/without food, etc.)",\n'
+            f'  "pregnancy_safety_notes": "Safety profile in pregnancy per ACOG/FDA categories",\n'
+            f'  "common_side_effects": ["side effect 1", "side effect 2", "side effect 3"],\n'
+            f'  "serious_warning_signs": ["serious symptom 1 (seek urgent care)", "serious symptom 2"],\n'
+            f'  "missed_dose_guidance": "Instructions if a dose is missed",\n'
+            f'  "clinical_reference": "ACOG Committee Opinion or SMFM Clinical Guidance"\n'
+            f"}}"
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
+                resp = await client.post(
+                    ollama_url,
+                    json={
+                        "model": settings.OLLAMA_MODEL,
+                        "prompt": prompt,
+                        "format": "json",
+                        "stream": False,
+                        "options": {"temperature": 0.2}
+                    }
+                )
+                if resp.status_code == 200:
+                    raw_data = resp.json()
+                    response_text = raw_data.get("response", "{}")
+                    parsed = json.loads(response_text)
+                    
+                    monograph = {
+                        "generic_name": parsed.get("generic_name") or clean_name.title(),
+                        "drug_class": parsed.get("drug_class") or "Obstetric Medication",
+                        "intended_use": parsed.get("intended_use") or f"Prescribed for maternal care plan ({clean_name}).",
+                        "standard_administration": parsed.get("standard_administration") or "Take as prescribed by attending clinician.",
+                        "pregnancy_safety_notes": parsed.get("pregnancy_safety_notes") or "Consult obstetric clinician for individualized safety assessment.",
+                        "pregnancy_safety_summary": parsed.get("pregnancy_safety_notes") or "Consult obstetric clinician for individualized safety assessment.",
+                        "common_side_effects": parsed.get("common_side_effects") if isinstance(parsed.get("common_side_effects"), list) else ["Mild gastrointestinal discomfort", "Fatigue"],
+                        "serious_warning_signs": parsed.get("serious_warning_signs") if isinstance(parsed.get("serious_warning_signs"), list) else ["Severe dizziness", "Chest tightness or breathing difficulty", "Severe rash"],
+                        "key_warnings": parsed.get("serious_warning_signs") if isinstance(parsed.get("serious_warning_signs"), list) else ["Severe dizziness", "Chest tightness or breathing difficulty", "Severe rash"],
+                        "missed_dose_guidance": parsed.get("missed_dose_guidance") or "Take as soon as remembered unless close to the next dose. Never double doses.",
+                        "clinical_reference": f"ACOG/SMFM Standards (Generated via Ollama {settings.OLLAMA_MODEL})",
+                        "source": f"ollama_{settings.OLLAMA_MODEL}"
+                    }
+                    
+                    MATERNAL_DRUG_MONOGRAPHS[clean_key] = monograph
+                    logger.info(f"Dynamically generated and cached monograph for '{clean_name}' via Ollama {settings.OLLAMA_MODEL}")
+                    return monograph
+        except Exception as e:
+            logger.warning(f"Ollama monograph generation failed for '{clean_name}': {e}. Using deterministic clinical fallback.")
+
+        # 3. Deterministic Clinical Fallback
+        fallback_monograph = {
+            "generic_name": clean_name.title(),
+            "drug_class": "Obstetric / Maternal Medication",
+            "intended_use": f"Prescribed medication order in patient maternal care plan ({clean_name}).",
+            "standard_administration": "Take strictly according to clinician prescription instructions and timing schedule.",
+            "pregnancy_safety_notes": "Established maternal care medication. Discuss specific pregnancy trimester considerations with your obstetric clinician.",
+            "pregnancy_safety_summary": "Established maternal care medication. Discuss specific pregnancy trimester considerations with your obstetric clinician.",
+            "common_side_effects": ["Mild nausea or gastrointestinal sensitivity", "Mild drowsiness or fatigue"],
+            "serious_warning_signs": ["Sudden severe dizziness or fainting", "Shortness of breath or allergic reaction", "Severe headache or visual changes"],
+            "key_warnings": ["Sudden severe dizziness or fainting", "Shortness of breath or allergic reaction", "Severe headache or visual changes"],
+            "missed_dose_guidance": "Take missed dose as soon as remembered unless close to next scheduled dose. Never double doses.",
+            "clinical_reference": "PregTwin Clinician Care Coordination & Practice Standards",
+            "source": "clinical_fallback"
+        }
+        MATERNAL_DRUG_MONOGRAPHS[clean_key] = fallback_monograph
+        return fallback_monograph
 
     @staticmethod
     def create_order(

@@ -103,6 +103,8 @@ class ReportSummarySchema(BaseModel):
 class MedicalDocumentResponse(BaseModel):
     id: str
     patient_id: str
+    patient_name: Optional[str] = None
+    patient_mrn: Optional[str] = None
     episode_id: Optional[str] = None
     filename: str
     file_size_bytes: int
@@ -114,6 +116,7 @@ class MedicalDocumentResponse(BaseModel):
     ocr_engine: Optional[str] = None
     ai_provider: Optional[str] = None
     page_count: int
+    extracted_text: Optional[str] = None
     created_at: datetime
     extracted_fields: List[ExtractedFieldSchema] = []
     summary: Optional[ReportSummarySchema] = None
@@ -415,17 +418,25 @@ class TimeSlotResponse(BaseModel):
 class AppointmentBookRequest(BaseModel):
     patient_id: str
     doctor_id: str
-    start_time: datetime
+    start_time: Optional[datetime] = None
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
     appointment_type: str = Field(default="in_person", description="in_person, telehealth, urgent_review")
-    reason: str = Field(..., min_length=3)
-    booking_channel: str = Field(default="ai_assistant")
+    reason: Optional[str] = "Routine prenatal consultation"
+    booking_channel: Optional[str] = None
+    booked_via: Optional[str] = None
+    patient_notes: Optional[str] = None
 
 class AppointmentRescheduleRequest(BaseModel):
-    new_start_time: datetime
+    new_start_time: Optional[datetime] = None
+    new_scheduled_start: Optional[datetime] = None
+    new_scheduled_end: Optional[datetime] = None
     reason: Optional[str] = None
+    reschedule_reason: Optional[str] = None
 
 class AppointmentCancelRequest(BaseModel):
-    cancellation_reason: str = Field(..., min_length=3)
+    cancellation_reason: Optional[str] = Field(default="Patient requested cancellation")
+    reason: Optional[str] = None
 
 class AppointmentResponse(BaseModel):
     id: str
@@ -435,11 +446,17 @@ class AppointmentResponse(BaseModel):
     doctor_name: Optional[str] = None
     start_time: datetime
     end_time: datetime
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
     status: str
     appointment_type: str
     reason: str
     booking_channel: str
+    booked_via: Optional[str] = None
     cancellation_reason: Optional[str] = None
+    cancelled_at: Optional[datetime] = None
+    formatted_time: Optional[str] = None
+    formatted_date: Optional[str] = None
     created_at: datetime
 
 # --- Notification Schemas ---

@@ -124,7 +124,7 @@ class AppointmentService:
         # Fetch existing active booked appointments
         existing_appts = db.query(Appointment).filter(
             Appointment.doctor_id == doctor_id,
-            Appointment.status.in_(["SCHEDULED", "CONFIRMED"]),
+            Appointment.status.in_(["SCHEDULED", "CONFIRMED", "RESCHEDULED"]),
             Appointment.start_time <= end_dt_range,
             Appointment.end_time >= start_dt_range
         ).all()
@@ -158,15 +158,20 @@ class AppointmentService:
                             # Skip if inside break
                             in_break = not (slot_end <= break_start_dt or slot_start >= break_end_dt)
 
+                            def _ensure_utc(dt):
+                                if dt is None:
+                                    return None
+                                return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
                             # Skip if inside leave
                             in_leave = any(
-                                not (slot_end <= l.start_datetime or slot_start >= l.end_datetime)
+                                not (slot_end <= _ensure_utc(l.start_datetime) or slot_start >= _ensure_utc(l.end_datetime))
                                 for l in leaves
                             )
 
                             # Skip if overlapping existing appointment
                             is_booked = any(
-                                not (slot_end <= a.start_time or slot_start >= a.end_time)
+                                not (slot_end <= _ensure_utc(a.start_time) or slot_start >= _ensure_utc(a.end_time))
                                 for a in existing_appts
                             )
 
@@ -226,7 +231,7 @@ class AppointmentService:
         # ATOMIC CONCURRENCY CHECK: Check for conflicting active appointment
         conflict = db.query(Appointment).filter(
             Appointment.doctor_id == doctor_id,
-            Appointment.status.in_(["SCHEDULED", "CONFIRMED"]),
+            Appointment.status.in_(["SCHEDULED", "CONFIRMED", "RESCHEDULED"]),
             and_(
                 Appointment.start_time < end_time,
                 Appointment.end_time > start_time
@@ -326,7 +331,7 @@ class AppointmentService:
         conflict = db.query(Appointment).filter(
             Appointment.doctor_id == appt.doctor_id,
             Appointment.id != appt.id,
-            Appointment.status.in_(["SCHEDULED", "CONFIRMED"]),
+            Appointment.status.in_(["SCHEDULED", "CONFIRMED", "RESCHEDULED"]),
             and_(
                 Appointment.start_time < new_end_time,
                 Appointment.end_time > new_start_time
@@ -339,7 +344,7 @@ class AppointmentService:
         old_time_str = appt.start_time.strftime("%A, %b %d at %I:%M %p")
         appt.start_time = new_start_time
         appt.end_time = new_end_time
-        appt.status = "CONFIRMED"
+        appt.status = "RESCHEDULED"
         db.commit()
         db.refresh(appt)
 
@@ -429,5 +434,30 @@ class AppointmentService:
             )
 
         return appt
+
+    @staticmethod
+    def cleanup_expired_cancelled_appointments(db: Session, max_age_minutes: int = 2) -> int:
+        """
+        Purges cancelled appointments that have been cancelled for longer than max_age_minutes (default 2 minutes).
+        Ensures the schedule stays clean while giving patients and doctors a temporary 2-minute confirmation window.
+        """
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
+            cutoff_naive = cutoff.replace(tzinfo=None)
+            deleted = db.query(Appointment).filter(
+                Appointment.status == "CANCELLED",
+                or_(
+                    and_(Appointment.cancelled_at != None, or_(Appointment.cancelled_at <= cutoff, Appointment.cancelled_at <= cutoff_naive)),
+                    and_(Appointment.cancelled_at == None, or_(Appointment.created_at <= cutoff, Appointment.created_at <= cutoff_naive))
+                )
+            ).delete(synchronize_session=False)
+            if deleted > 0:
+                db.commit()
+                logger.info(f"Purged {deleted} cancelled appointments older than {max_age_minutes} minutes.")
+            return deleted
+        except Exception as ex:
+            logger.error(f"Error during cancelled appointments cleanup: {ex}")
+            db.rollback()
+            return 0
 
 appointment_service = AppointmentService()

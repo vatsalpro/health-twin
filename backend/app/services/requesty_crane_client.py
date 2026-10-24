@@ -68,6 +68,31 @@ class RequestyCraneClient:
         else:
             appts_summary = "No upcoming consultations scheduled."
 
+        booking_section = ""
+        if context.get("newly_booked_appointment"):
+            nb = context["newly_booked_appointment"]
+            booking_section = f"""
+
+REAL-TIME ACTION TAKEN:
+- You have just successfully scheduled and confirmed an appointment in the clinic system:
+  * Clinician: {nb.get('doctor_name', 'Dr. Elena Vance, MD')}
+  * Date & Time: {nb.get('formatted_date', '')} at {nb.get('formatted_time', '')} ({nb.get('start_time', '')})
+  * Appointment Type: {nb.get('appointment_type', 'Routine Prenatal Consultation')}
+- Confirm this appointment warmly to {patient_name}! Assure them that Dr. Vance's team has been notified, and remind them that this consultation is recorded in their Appointments tab."""
+        elif context.get("booking_failed_reason"):
+            booking_section = f"""
+
+APPOINTMENT SCHEDULING NOTICE:
+- {context['booking_failed_reason']}
+- Kindly explain this clearly to {patient_name} and offer the nearest available open times."""
+        elif context.get("suggested_slots_summary"):
+            slots_list = "\n".join([f"  * {s}" for s in context["suggested_slots_summary"]])
+            booking_section = f"""
+
+AVAILABLE CLINICAL CONSULTATION SLOTS (Dr. Elena Vance):
+{slots_list}
+- If {patient_name} is looking to schedule or see Dr. Vance, let them know these openings are available and that they can pick one anytime."""
+
         prompt = f"""You are Dr. Crane, the friendly, professional, and compassionate 2D cartoon crane doctor mascot of the PregTwin maternal health system.
 You wear a crisp white doctor coat, a stethoscope around your long neck, and carry a small medical satchel.
 
@@ -81,6 +106,7 @@ AUTHENTICATED PATIENT CLINICAL FILE:
 - Upcoming Appointments:
 {appts_summary}
 - Responsible Clinician: Dr. Elena Vance, MD (Maternal-Fetal Medicine Specialist)
+{booking_section}
 
 CRITICAL MEDICAL SAFETY & ETHICAL RULES:
 1. ROLE & IDENTITY:

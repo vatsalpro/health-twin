@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   RotateCcw,
   BookOpen,
+  User as UserIcon,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -28,6 +29,7 @@ interface ChatMessage {
   mascotExpression?: MascotExpression;
   groundingSources?: string[];
   doctorSlots?: DoctorSlot[];
+  actionTaken?: any;
   createdAt: string;
 }
 
@@ -43,6 +45,35 @@ export const AIAssistantView: React.FC = () => {
   const [mascotState, setMascotState] = useState<'idle' | 'speaking' | 'thinking' | 'alert'>('idle');
   const [bookingSlotLoading, setBookingSlotLoading] = useState<string | null>(null);
   const [bookingSuccessMsg, setBookingSuccessMsg] = useState<string | null>(null);
+
+  // Clinician Transcript Oversight State
+  const [clinicianSelectedPatientId, setClinicianSelectedPatientId] = useState<string>(
+    selectedPatientId || ''
+  );
+  const [clinicianHistory, setClinicianHistory] = useState<AIChatMessageItem[]>([]);
+  const [clinicianLoadingHistory, setClinicianLoadingHistory] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!clinicianSelectedPatientId && selectedPatientId) {
+      setClinicianSelectedPatientId(selectedPatientId);
+    }
+  }, [selectedPatientId]);
+
+  useEffect(() => {
+    if (!isClinician || !clinicianSelectedPatientId) return;
+    const fetchClinicianHistory = async () => {
+      setClinicianLoadingHistory(true);
+      try {
+        const hist = await api.getAIAssistantHistory(clinicianSelectedPatientId, 50);
+        setClinicianHistory(hist || []);
+      } catch (err) {
+        console.error('Failed to load clinician transcript:', err);
+      } finally {
+        setClinicianLoadingHistory(false);
+      }
+    };
+    fetchClinicianHistory();
+  }, [isClinician, clinicianSelectedPatientId]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -124,12 +155,21 @@ export const AIAssistantView: React.FC = () => {
         message: text,
       });
 
-      const expression = (resp.mascot_expression as MascotExpression) || 'friendly';
+      const isBooked = Boolean(resp.action_taken?.appointment_booked);
+      const expression = isBooked
+        ? 'encouraging'
+        : ((resp.mascot_expression as MascotExpression) || 'friendly');
       setMascotExpression(expression);
       setMascotState(resp.is_emergency ? 'alert' : 'speaking');
 
+      if (isBooked && resp.action_taken) {
+        setBookingSuccessMsg(
+          `Confirmed: Consultation scheduled with ${resp.action_taken.doctor_name || 'Dr. Elena Vance'} for ${resp.action_taken.formatted_date} at ${resp.action_taken.formatted_time}.`
+        );
+      }
+
       const assistantMsg: ChatMessage = {
-        id: resp.id || `asst-${Date.now()}`,
+        id: resp.id || resp.message_id || `asst-${Date.now()}`,
         role: 'assistant',
         message: resp.assistant_reply,
         intentCategory: resp.intent_category,
@@ -137,7 +177,8 @@ export const AIAssistantView: React.FC = () => {
         emergencyInstructions: resp.emergency_instructions,
         mascotExpression: expression,
         groundingSources: resp.grounding_sources,
-        doctorSlots: resp.doctor_slots,
+        doctorSlots: resp.doctor_slots || resp.suggested_slots,
+        actionTaken: resp.action_taken,
         createdAt: resp.created_at || new Date().toISOString(),
       };
 
@@ -183,14 +224,16 @@ export const AIAssistantView: React.FC = () => {
         booked_via: 'AI_ASSISTANT',
       });
 
-      const dateStr = new Date(appt.scheduled_start).toLocaleDateString(undefined, {
+      const startIso = appt.scheduled_start || (appt as any).start_time || slot.start_time;
+      const dateStr = slot.formatted_date || (appt as any).formatted_date || new Date(startIso).toLocaleDateString(undefined, {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
       });
-      const timeStr = new Date(appt.scheduled_start).toLocaleTimeString(undefined, {
-        hour: '2-digit',
+      const timeStr = slot.formatted_time?.replace(/^0(\d:)/, '$1') || (appt as any).formatted_time || new Date(startIso).toLocaleTimeString(undefined, {
+        hour: 'numeric',
         minute: '2-digit',
+        hour12: true,
       });
 
       setBookingSuccessMsg(`Confirmed: Appointment scheduled with ${slot.doctor_name} on ${dateStr} at ${timeStr}.`);
@@ -216,6 +259,7 @@ export const AIAssistantView: React.FC = () => {
     { label: 'Explain my prescribed medicine', prompt: 'What does my doctor mean by taking Labetalol twice daily?' },
     { label: 'Can I double missed dose?', prompt: 'Can I double my dose because I missed yesterday?' },
     { label: 'Book Dr. Vance appointment', prompt: 'Can I book an appointment with Dr. Vance next week?' },
+    { label: 'Book appointment tomorrow 10am', prompt: 'Please book an appointment with Dr. Vance for tomorrow at 10 AM' },
     { label: 'Severe headache warning', prompt: 'I have a sudden severe pounding headache and blurry vision' },
     { label: 'Ask coding question (off-topic)', prompt: 'Write me a Python program to calculate fibonacci' },
   ];
@@ -280,6 +324,121 @@ export const AIAssistantView: React.FC = () => {
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Clinician Patient AI Chat Audit & Transcript Panel */}
+        <div className="glass-panel p-6 rounded-2xl border border-purple-200/90 shadow-sm space-y-4 text-left">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-purple-100">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-purple-700" />
+                <span>Patient Interaction Audit &amp; Clinical Transcript</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Review recent patient questions, symptom reports, and grounded advice delivered by Dr. Crane.
+              </p>
+            </div>
+
+            {/* Patient Selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 font-medium">Subject:</span>
+              <select
+                value={clinicianSelectedPatientId}
+                onChange={(e) => setClinicianSelectedPatientId(e.target.value)}
+                className="text-xs font-semibold bg-white border border-purple-200 rounded-xl px-3 py-1.5 text-purple-950 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="23c60346-9c67-4ac8-910c-881a4a505df6">Maya Lin (MRN-PT-2026-001)</option>
+                <option value="3efd45db-2ed0-4eac-b0d7-64e4e544116c">Sophia Reyes (MRN-PT-2026-002)</option>
+                <option value="18113544-4d30-460a-b6aa-64e73a08a3f3">Clara Novak (MRN-PT-2026-003)</option>
+              </select>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!clinicianSelectedPatientId) return;
+                  setClinicianLoadingHistory(true);
+                  try {
+                    const hist = await api.getAIAssistantHistory(clinicianSelectedPatientId, 50);
+                    setClinicianHistory(hist || []);
+                  } finally {
+                    setClinicianLoadingHistory(false);
+                  }
+                }}
+                className="p-1.5 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs cursor-pointer"
+                title="Refresh transcript"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Transcript Messages List */}
+          {clinicianLoadingHistory ? (
+            <div className="py-12 text-center text-xs text-slate-500">
+              <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              Loading patient AI dialogue history...
+            </div>
+          ) : clinicianHistory.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-500 bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
+              No recent Dr. Crane conversations recorded for this patient yet.
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {clinicianHistory.map((item, idx) => (
+                <div
+                  key={item.id || idx}
+                  className={`p-3.5 rounded-xl text-xs space-y-1.5 border transition-all ${
+                    item.role === 'user'
+                      ? 'bg-purple-50/70 border-purple-200 text-slate-900 ml-6'
+                      : item.is_emergency
+                      ? 'bg-rose-50 border-rose-300 text-rose-950 mr-6 shadow-xs'
+                      : 'bg-white border-slate-200 text-slate-800 mr-6 shadow-2xs'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold flex items-center gap-1.5">
+                      {item.role === 'user' ? (
+                        <>
+                          <UserIcon className="w-3.5 h-3.5 text-purple-600" />
+                          <span className="text-purple-900">Patient Inquiry</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                          <span className="text-indigo-900">Dr. Crane AI Guidance</span>
+                        </>
+                      )}
+                    </span>
+                    <span className="text-slate-400 font-mono text-[10px]">
+                      {item.created_at ? new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : ''}
+                    </span>
+                  </div>
+
+                  <p className="whitespace-pre-wrap leading-relaxed text-slate-700">
+                    {item.message}
+                  </p>
+
+                  <div className="flex items-center gap-2 pt-1 flex-wrap text-[10px]">
+                    {item.intent_category && (
+                      <span className="px-2 py-0.5 rounded-md bg-purple-100/80 text-purple-800 font-medium font-mono">
+                        Intent: {item.intent_category}
+                      </span>
+                    )}
+                    {item.is_emergency && (
+                      <span className="px-2 py-0.5 rounded-md bg-rose-600 text-white font-bold animate-pulse flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        EMERGENCY PROTOCOL ESCALATED
+                      </span>
+                    )}
+                    {item.grounding_sources && item.grounding_sources.length > 0 && (
+                      <span className="text-slate-500">
+                        Sources: {item.grounding_sources.join(', ')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -433,6 +592,41 @@ export const AIAssistantView: React.FC = () => {
                 {/* Text Content */}
                 <div className="whitespace-pre-wrap">{msg.message}</div>
 
+                {/* Confirmed Appointment Card if AI booked a slot */}
+                {msg.actionTaken?.appointment_booked && (
+                  <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200/90 shadow-2xs space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                        ✓ Consultation Confirmed
+                      </span>
+                      <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-emerald-600" />
+                        Scheduled by Dr. Crane AI
+                      </span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
+                      <div>
+                        <p className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                          <UserIcon className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>{msg.actionTaken.doctor_name || 'Dr. Elena Vance, MD'}</span>
+                        </p>
+                        <p className="text-[11px] text-emerald-800 font-medium mt-0.5 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>
+                            {msg.actionTaken.formatted_date} at {msg.actionTaken.formatted_time}
+                          </span>
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => navigate('/appointments')}
+                        className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs hover:scale-105 active:scale-95 transition-all shrink-0"
+                      >
+                        View in Appointments &rarr;
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Interactive Doctor Slot Cards in Assistant Reply */}
                 {msg.doctorSlots && msg.doctorSlots.length > 0 && (
                   <div className="mt-4 pt-3 border-t border-purple-100 space-y-2">
@@ -442,14 +636,15 @@ export const AIAssistantView: React.FC = () => {
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {msg.doctorSlots.map((slot, idx) => {
-                        const dateFormatted = new Date(slot.start_time).toLocaleDateString(undefined, {
+                        const dateFormatted = slot.formatted_date || new Date(slot.start_time).toLocaleDateString(undefined, {
                           weekday: 'short',
                           month: 'short',
                           day: 'numeric',
                         });
-                        const timeFormatted = new Date(slot.start_time).toLocaleTimeString(undefined, {
-                          hour: '2-digit',
+                        const timeFormatted = slot.formatted_time?.replace(/^0(\d:)/, '$1') || new Date(slot.start_time).toLocaleTimeString(undefined, {
+                          hour: 'numeric',
                           minute: '2-digit',
+                          hour12: true,
                         });
                         const isBookingThis = bookingSlotLoading === slot.start_time;
 

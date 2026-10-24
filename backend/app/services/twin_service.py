@@ -95,7 +95,9 @@ class TwinService:
 
         # Determine gestational age from verified clinical evidence
         ga_weeks = None
-        if episode and episode.conception_date:
+        if episode and episode.current_gestational_age_weeks is not None:
+            ga_weeks = episode.current_gestational_age_weeks
+        elif episode and episode.conception_date:
             try:
                 c_date = datetime.strptime(episode.conception_date, "%Y-%m-%d").date()
                 ref_date = as_of_timestamp.date() if hasattr(as_of_timestamp, "date") else as_of_timestamp
@@ -104,10 +106,7 @@ class TwinService:
                     ga_weeks = round(diff_days / 7.0, 1)
             except Exception:
                 pass
-
-        if ga_weeks is None and episode and episode.current_gestational_age_weeks:
-            ga_weeks = episode.current_gestational_age_weeks
-        elif ga_weeks is None and sbp_obs and sbp_obs.gestational_age_weeks:
+        elif sbp_obs and sbp_obs.gestational_age_weeks:
             ga_weeks = sbp_obs.gestational_age_weeks
 
         # Missingness checks

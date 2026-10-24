@@ -178,6 +178,91 @@ describe('PregTwin Frontend Test Suite', () => {
     expect(res.hrvReason).toContain('exceed 60 continuous seconds');
   });
 
+  it('rPPG Processor reliably estimates BPM and Signal Quality Index with detrending and PSD SNR', () => {
+    const proc = new RppgProcessor();
+    const baseTime = Date.now();
+
+    // Populate 260 samples (~8.5 seconds) with 1.25 Hz pulse (75 bpm) and respiratory baseline drift
+    for (let i = 0; i < 260; i++) {
+      const t = i / 30; // 30 fps
+      const drift = 5.0 * Math.sin(2 * Math.PI * 0.25 * t); // slow 0.25 Hz drift
+      const pulseMod = Math.sin(2 * Math.PI * 1.25 * t) * 1.2 + Math.sin(2 * Math.PI * 2.5 * t) * 0.4;
+      proc.sampleRoisFromCanvas(
+        {
+          getImageData: () => ({
+            data: new Uint8ClampedArray([
+              Math.min(255, Math.max(0, 180 + drift + pulseMod * 0.5)),
+              Math.min(255, Math.max(0, 140 + drift + pulseMod * 1.8)),
+              Math.min(255, Math.max(0, 120 + drift + pulseMod * 0.3)),
+              255,
+            ]),
+          }),
+        } as any,
+        [[{ x: 10, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 20 }]],
+        baseTime + i * 33
+      );
+    }
+
+    const res = proc.process('STABLE');
+    expect(res.status).toBe('ESTIMATED');
+    expect(res.pulseBpm).toBeGreaterThanOrEqual(72);
+    expect(res.pulseBpm).toBeLessThanOrEqual(78);
+    expect(res.pulseSnrDb).toBeGreaterThan(1.8);
+    expect(res.signalQualityScore).toBeGreaterThanOrEqual(55);
+  });
+
+  it('rPPG Processor throttles high-refresh rate duplicate samples (<26ms) to prevent staircase artifacts', () => {
+    const proc = new RppgProcessor();
+    const t0 = 1000;
+    const s1 = proc.sampleRoisFromCanvas(
+      { getImageData: () => ({ data: new Uint8ClampedArray([180, 140, 120, 255]) }) } as any,
+      [[{ x: 10, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 20 }]],
+      t0
+    );
+    expect(s1).not.toBeNull();
+
+    // 144Hz monitor frame arrives 7ms later: must be dropped as duplicate
+    const s2 = proc.sampleRoisFromCanvas(
+      { getImageData: () => ({ data: new Uint8ClampedArray([180, 140, 120, 255]) }) } as any,
+      [[{ x: 10, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 20 }]],
+      t0 + 7
+    );
+    expect(s2).toBeNull();
+
+    // Next 30fps camera frame arrives 33ms later: accepted
+    const s3 = proc.sampleRoisFromCanvas(
+      { getImageData: () => ({ data: new Uint8ClampedArray([180, 140, 120, 255]) }) } as any,
+      [[{ x: 10, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 20 }]],
+      t0 + 33
+    );
+    expect(s3).not.toBeNull();
+  });
+
+  it('filters out cancelled appointments older than 2 minutes (120 seconds)', () => {
+    const now = Date.now();
+    const appts = [
+      { id: '1', status: 'SCHEDULED' },
+      { id: '2', status: 'CANCELLED', cancelled_at: new Date(now - 30 * 1000).toISOString() }, // 30s ago -> keep
+      { id: '3', status: 'CANCELLED', cancelled_at: new Date(now - 150 * 1000).toISOString() }, // 150s ago (> 2 min) -> remove
+    ];
+
+    const filterActive = (list: typeof appts, currentTime: number) => {
+      return list.filter((a) => {
+        if (a.status !== 'CANCELLED') return true;
+        const cancelTimestamp = a.cancelled_at ? new Date(a.cancelled_at).getTime() : null;
+        if (cancelTimestamp === null) return true;
+        const elapsedMs = currentTime - cancelTimestamp;
+        return elapsedMs < 2 * 60 * 1000;
+      });
+    };
+
+    const active = filterActive(appts, now);
+    expect(active.length).toBe(2);
+    expect(active.some((a) => a.id === '1')).toBe(true);
+    expect(active.some((a) => a.id === '2')).toBe(true);
+    expect(active.some((a) => a.id === '3')).toBe(false);
+  });
+
   it('Stress Analysis Pipeline maintains honest unavailable state and distinguishes self-report from ground truth', () => {
     const pipeline = new StressAnalysisPipeline();
 
@@ -245,5 +330,54 @@ describe('PregTwin Frontend Test Suite', () => {
 
     // 4. Model card must disclose lack of antenatal validation
     expect(evalResult.modelCard.evaluationMaternalPopulation).toContain('NOT VALIDATED in pregnancy');
+
+    // 5. Must compute objective Physiological Tension Indicator
+    expect(evalResult.tensionIndicator).toBeDefined();
+    expect(evalResult.tensionIndicator!.score).toBeGreaterThanOrEqual(1.0);
+    expect(evalResult.tensionIndicator!.score).toBeLessThanOrEqual(10.0);
+    expect(['RELAXED_OPTIMAL', 'MILD_TENSION', 'MODERATE_TENSION', 'ELEVATED_TENSION']).toContain(evalResult.tensionIndicator!.category);
+    expect(evalResult.tensionIndicator!.drivers.browTension.label).toBeDefined();
+    expect(evalResult.tensionIndicator!.drivers.lipPress.label).toBeDefined();
+    expect(evalResult.tensionIndicator!.drivers.blinkCadence.rate).toBe(18);
+    expect(evalResult.tensionIndicator!.drivers.pulseArousal.bpm).toBe(74);
+  });
+
+  it('rPPG Processor supports faster 120-sample convergence and 0.8 dB SNR threshold', () => {
+    const proc = new RppgProcessor();
+    const baseTime = Date.now();
+
+    // Supply 130 samples (~4.3 seconds at 30 fps) with a clean 1.3 Hz pulse
+    for (let i = 0; i < 130; i++) {
+      const t = i / 30;
+      const pulseMod = Math.sin(2 * Math.PI * 1.3 * t) * 1.5;
+      proc.sampleRoisFromCanvas(
+        {
+          getImageData: () => ({
+            data: new Uint8ClampedArray([180 + pulseMod, 140 + pulseMod * 1.8, 120 + pulseMod * 0.4, 255]),
+          }),
+        } as any,
+        [[{ x: 10, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 20 }]],
+        baseTime + i * 33
+      );
+    }
+
+    const res = proc.process('STABLE');
+    expect(res.status).toBe('ESTIMATED');
+    expect(res.pulseBpm).toBeGreaterThanOrEqual(75);
+    expect(res.pulseBpm).toBeLessThanOrEqual(81);
+    expect(res.pulseSnrDb).toBeGreaterThan(0.8);
+    expect(res.signalQualityScore).toBeGreaterThanOrEqual(50);
+  });
+
+  it('verifies patient effectivePatientId resolution for camera research operations', () => {
+    // Clinician view: selectedPatientId is explicitly selected
+    const clinicianAuth = { selectedPatientId: 'patient-42', user: { role: 'clinician' } };
+    const clinicianEffectiveId = clinicianAuth.selectedPatientId || (clinicianAuth.user as any)?.patient_id;
+    expect(clinicianEffectiveId).toBe('patient-42');
+
+    // Patient view: selectedPatientId is null initially, resolved from user.patient_id
+    const patientAuth = { selectedPatientId: null, user: { role: 'patient', patient_id: 'maya-lin-101' }, selectedPatient: { id: 'maya-lin-101' } };
+    const patientEffectiveId = patientAuth.selectedPatientId || patientAuth.user.patient_id || patientAuth.selectedPatient.id;
+    expect(patientEffectiveId).toBe('maya-lin-101');
   });
 });

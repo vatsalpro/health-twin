@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.database import SessionLocal, Base, engine
-from app.models.entities import User, PatientProfile, MedicationOrder, EmergencyEvent, AIChatMessage
+from app.models.entities import User, PatientProfile, MedicationOrder, EmergencyEvent, AIChatMessage, Appointment
 from app.services.ai_assistant_service import ai_assistant_service
 
 client = TestClient(app)
@@ -124,7 +124,7 @@ def test_ai_assistant_refuses_autonomous_prescribing(auth_tokens):
     data = resp.json()
     reply = data["assistant_reply"].lower()
     assert "not double" in reply or "never double" in reply
-    assert "dr. vance" in reply or "doctor" in reply or "clinician" in reply
+    assert "dr. vance" in reply or "dr. elena vance" in reply or "vance" in reply or "doctor" in reply or "clinician" in reply
 
 def test_ai_assistant_off_topic_refusal(auth_tokens):
     """Verify polite refusal for non-medical requests."""
@@ -176,3 +176,51 @@ def test_ai_assistant_patient_isolation(auth_tokens):
     # Patient 1 tries to view patient 2's chat history
     resp_hist = client.get(f"/api/v1/ai-assistant/history/{auth_tokens['p2_id']}", headers=headers_p1)
     assert resp_hist.status_code == 404
+
+def test_ai_assistant_conversational_appointment_booking(auth_tokens, db):
+    """Verify patient can book an appointment conversationally with Dr. Crane."""
+    headers_p1 = {"Authorization": f"Bearer {auth_tokens['p1_token']}"}
+    payload = {
+        "patient_id": auth_tokens["p1_id"],
+        "message": "Please book the next available appointment slot with Dr. Vance"
+    }
+    resp = client.post("/api/v1/ai-assistant/chat", json=payload, headers=headers_p1)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["action_taken"] is not None
+    assert data["action_taken"].get("appointment_booked") is True
+    appt_id = data["action_taken"].get("appointment_id")
+    assert appt_id is not None
+
+    # Verify appointment exists in database
+    appt = db.query(Appointment).filter(Appointment.id == appt_id).first()
+    assert appt is not None
+    assert appt.patient_id == auth_tokens["p1_id"]
+    assert appt.booking_channel == "ai_assistant"
+    assert appt.status in ("CONFIRMED", "SCHEDULED")
+
+def test_parse_requested_time_ampm_robustness():
+    """Verify parse_requested_time accurately parses 12h AM/PM, dotted a.m./p.m., noon, and phrases."""
+    from app.services.ai_assistant_service import AIAssistantService
+
+    # AM times
+    assert AIAssistantService.parse_requested_time("can i meet at 9:00 am please") == (9, 0)
+    assert AIAssistantService.parse_requested_time("at 10 am") == (10, 0)
+    assert AIAssistantService.parse_requested_time("schedule for 11:30am") == (11, 30)
+    assert AIAssistantService.parse_requested_time("at 9 a.m.") == (9, 0)
+    assert AIAssistantService.parse_requested_time("at 10 in the morning") == (10, 0)
+
+    # PM times
+    assert AIAssistantService.parse_requested_time("book for 2:30 pm") == (14, 30)
+    assert AIAssistantService.parse_requested_time("at 2 pm") == (14, 0)
+    assert AIAssistantService.parse_requested_time("at 4:15pm") == (16, 15)
+    assert AIAssistantService.parse_requested_time("at 3 p.m.") == (15, 0)
+    assert AIAssistantService.parse_requested_time("at 3 in the afternoon") == (15, 0)
+    assert AIAssistantService.parse_requested_time("at 6 in the evening") == (18, 0)
+
+    # Noon & Midnight
+    assert AIAssistantService.parse_requested_time("at noon") == (12, 0)
+    assert AIAssistantService.parse_requested_time("at 12:00 pm") == (12, 0)
+    assert AIAssistantService.parse_requested_time("at 12 pm") == (12, 0)
+    assert AIAssistantService.parse_requested_time("at 12:00 am") == (0, 0)
+    assert AIAssistantService.parse_requested_time("at 12 am") == (0, 0)

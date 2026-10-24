@@ -327,27 +327,85 @@ def simulate_scenario(
 
     # 6. Sensor Reliability Simulator
     elif category == "sensor_reliability":
+        missing_pkt = float(payload.get("missing_packet_pct", 8.0))
+        delay_min = float(payload.get("transmission_delay_min", 15.0))
+        noise_sig = float(payload.get("sensor_noise_sigma", 3.5))
+        dup_rate = float(payload.get("duplicate_rate_pct", 2.0))
+        low_conf = float(payload.get("low_confidence_pct", 5.0))
+        disc_hrs = float(payload.get("device_disconnect_hours", 0.0))
+
         sr_res = simulation_service.simulate_sensor_reliability(
-            missing_packet_pct=float(payload.get("missing_packet_pct", 8.0)),
-            transmission_delay_min=float(payload.get("transmission_delay_min", 15.0)),
-            duplicate_rate_pct=float(payload.get("duplicate_rate_pct", 2.0)),
-            sensor_noise_sigma=float(payload.get("sensor_noise_sigma", 3.5)),
-            low_confidence_pct=float(payload.get("low_confidence_pct", 5.0)),
-            device_disconnect_hours=float(payload.get("device_disconnect_hours", 0.0))
+            missing_packet_pct=missing_pkt,
+            transmission_delay_min=delay_min,
+            duplicate_rate_pct=dup_rate,
+            sensor_noise_sigma=noise_sig,
+            low_confidence_pct=low_conf,
+            device_disconnect_hours=disc_hrs
         )
 
+        rel_score = float(sr_res["impact_metrics"]["trend_reliability_score"])
+        rel_category = sr_res["impact_metrics"]["reliability_category"]
+        risk_cat = "HIGH" if rel_category == "UNRELIABLE_DEGRADED" else ("MODERATE" if rel_category == "ACCEPTABLE" else "LOW")
+
+        # Telemetry risk reflects the probability of undetected clinical deterioration or false assurance
+        telemetry_risk = round(max(0.05, min(0.95, (100.0 - rel_score) / 100.0)), 3)
+        base_val = baseline_risk if baseline_risk is not None else 0.18
+        delta = round(telemetry_risk - base_val, 3)
+
+        contributions = [
+            FeatureContribution(
+                feature_name="missing_packets",
+                feature_label="Packet Dropout Rate",
+                value=f"{missing_pkt}%",
+                contribution=round(missing_pkt * 0.5, 1),
+                direction="INCREASES_RISK" if missing_pkt > 10 else "NEUTRAL"
+            ),
+            FeatureContribution(
+                feature_name="sensor_noise",
+                feature_label="Telemetry Noise Variance",
+                value=f"±{noise_sig}σ",
+                contribution=round(noise_sig * 2.5, 1),
+                direction="INCREASES_RISK" if noise_sig > 4 else "NEUTRAL"
+            ),
+            FeatureContribution(
+                feature_name="sync_latency",
+                feature_label="Transmission Latency",
+                value=f"{delay_min} min",
+                contribution=round(delay_min * 0.25, 1),
+                direction="INCREASES_RISK" if delay_min > 30 else "NEUTRAL"
+            ),
+        ]
+        if disc_hrs > 0:
+            contributions.append(
+                FeatureContribution(
+                    feature_name="device_disconnect",
+                    feature_label="Device Disconnect Duration",
+                    value=f"{disc_hrs} hrs",
+                    contribution=round(disc_hrs * 4.0, 1),
+                    direction="INCREASES_RISK"
+                )
+            )
+
+        unc_half_width = round((100.0 - rel_score) * 0.005, 3)
+        uncertainty = {
+            "lower_bound_95ci": max(0.01, round(telemetry_risk - unc_half_width, 3)),
+            "upper_bound_95ci": min(0.99, round(telemetry_risk + unc_half_width * 1.5, 3)),
+            "confidence_score": rel_score
+        }
+
         return SimulationResponse(
-            scenario_label="Sensor Reliability & Noise Simulator",
+            scenario_label="Sensor Reliability & Telemetry Quality Simulator",
             is_causal_treatment_claim=False,
             warning="Demonstrates how sensor degradation impacts trend trustworthiness and algorithmic uncertainty.",
             baseline_risk_score=baseline_risk,
-            simulated_risk_score=0.1,
-            simulated_risk_category="LOW",
-            delta_risk_score=0.0,
-            feature_contributions=[],
+            simulated_risk_score=telemetry_risk,
+            simulated_risk_category=risk_cat,
+            delta_risk_score=delta,
+            feature_contributions=contributions,
             model_version="v1.4.2-sensor-telemetry-qa",
             category="sensor_reliability",
-            detailed_results=sr_res
+            detailed_results=sr_res,
+            uncertainty_interval=uncertainty
         )
 
     # 7. Monitoring Schedule Simulator

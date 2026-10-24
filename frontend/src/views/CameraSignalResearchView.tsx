@@ -1,28 +1,17 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api, CameraResearchStatus, CameraResearchSessionRecord } from '../api/client';
 import {
   Camera,
   CameraOff,
-  ShieldCheck,
   AlertTriangle,
   Play,
   Square,
   Sparkles,
-  Eye,
   Heart,
   Activity,
-  Clock,
-  Compass,
-  Smile,
-  Frown,
-  Check,
   Save,
-  RotateCcw,
   Info,
-  Calendar,
-  Layers,
-  ChevronRight,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -35,12 +24,15 @@ import { rppgProcessor, RppgProcessingResult } from '../services/rppgProcessor';
 import { stressAnalysisPipeline, StressEstimationPipelineOutput } from '../services/stressAnalysisPipeline';
 
 export const CameraSignalResearchView: React.FC = () => {
-  const { selectedPatientId } = useAuth();
+  const { selectedPatientId, selectedPatient, user, allPatients, setSelectedPatientId } = useAuth();
+  const effectivePatientId = selectedPatientId || user?.patient_id || selectedPatient?.id || (allPatients && allPatients.length > 0 ? allPatients[0].id : null);
+
   const [researchMeta, setResearchMeta] = useState<CameraResearchStatus | null>(null);
   const [pastSessions, setPastSessions] = useState<CameraResearchSessionRecord[]>([]);
 
   // Camera & Stream State
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [cameraPermission, setCameraPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isModelLoading, setIsModelLoading] = useState<boolean>(false);
@@ -55,6 +47,10 @@ export const CameraSignalResearchView: React.FC = () => {
   const [rppgResult, setRppgResult] = useState<RppgProcessingResult | null>(null);
   const [stressOutput, setStressOutput] = useState<StressEstimationPipelineOutput | null>(null);
   const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+
+  // Vitals direct sync state
+  const [isSavingObservation, setIsSavingObservation] = useState<boolean>(false);
+  const [obsSavedMsg, setObsSavedMsg] = useState<string | null>(null);
 
   // Research Self-Report & Consent
   const [userReportedStress, setUserReportedStress] = useState<number>(5);
@@ -72,12 +68,21 @@ export const CameraSignalResearchView: React.FC = () => {
   const hiddenProcessingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<number | null>(null);
+  const simulationIntervalRef = useRef<number | null>(null);
+  const simulationTickRef = useRef<number>(0);
+
+  // Synchronize patient ID if user is a logged-in patient without explicit selector change
+  useEffect(() => {
+    if (!selectedPatientId && effectivePatientId) {
+      setSelectedPatientId(effectivePatientId);
+    }
+  }, [selectedPatientId, effectivePatientId, setSelectedPatientId]);
 
   // Load Status and Sessions
   const loadSessions = async () => {
-    if (!selectedPatientId) return;
+    if (!effectivePatientId) return;
     try {
-      const sessions = await api.getCameraResearchSessions(selectedPatientId);
+      const sessions = await api.getCameraResearchSessions(effectivePatientId);
       setPastSessions(sessions);
     } catch (err) {
       console.warn('Could not load past sessions:', err);
@@ -85,11 +90,11 @@ export const CameraSignalResearchView: React.FC = () => {
   };
 
   useEffect(() => {
-    if (selectedPatientId) {
-      api.getCameraResearchStatus(selectedPatientId).then(setResearchMeta).catch(console.error);
+    if (effectivePatientId) {
+      api.getCameraResearchStatus(effectivePatientId).then(setResearchMeta).catch(console.error);
       loadSessions();
     }
-  }, [selectedPatientId]);
+  }, [effectivePatientId]);
 
   // Initialize MediaPipe Face Landmarker on mount
   useEffect(() => {
@@ -110,6 +115,8 @@ export const CameraSignalResearchView: React.FC = () => {
 
   // Start Camera Stream
   const startCamera = async () => {
+    stopCamera();
+    setIsSimulating(false);
     setCameraError(null);
     setSaveSuccessMsg(null);
     rppgProcessor.reset();
@@ -146,15 +153,202 @@ export const CameraSignalResearchView: React.FC = () => {
       setCameraPermission('denied');
       setCameraError(
         err.name === 'NotAllowedError'
-          ? 'Camera access was denied. Please allow camera permissions in your browser settings to perform live optical analysis.'
+          ? 'Camera access was denied. Please allow camera permissions in your browser settings to perform live optical analysis, or click "Simulate Optical Scan" below.'
           : `Camera hardware could not be initialized: ${err.message || 'Device unavailable'}`
       );
     }
   };
 
-  // Stop Camera Stream
+  // Start Simulation / Demo Mode (ideal for offline devices or lighting tests)
+  const startSimulation = () => {
+    stopCamera();
+    setIsSimulating(true);
+    setIsCapturing(true);
+    setCameraPermission('granted');
+    setCameraError(null);
+    setSaveSuccessMsg(null);
+    setRecordingSeconds(0);
+    simulationTickRef.current = 0;
+
+    const overlay = overlayCanvasRef.current;
+    if (overlay) {
+      overlay.width = 640;
+      overlay.height = 480;
+    }
+
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    timerIntervalRef.current = window.setInterval(() => {
+      setRecordingSeconds((prev) => prev + 1);
+    }, 1000);
+
+    const syntheticWave: number[] = [];
+
+    if (simulationIntervalRef.current) clearInterval(simulationIntervalRef.current);
+    simulationIntervalRef.current = window.setInterval(() => {
+      simulationTickRef.current += 1;
+      const tick = simulationTickRef.current;
+      const t = tick * 0.033; // ~30 fps
+
+      const blinkMod = tick % 110;
+      const isBlinking = blinkMod > 104;
+      const browFurrow = Math.max(0.08, 0.16 + Math.sin(t * 0.4) * 0.06);
+      const lipPress = Math.max(0.05, 0.12 + Math.cos(t * 0.3) * 0.05);
+      const pitchDeg = Math.round(Math.sin(t * 0.6) * 1.5 * 10) / 10;
+      const yawDeg = Math.round(Math.cos(t * 0.5) * 2.0 * 10) / 10;
+
+      const simMetrics: FacialMetrics = {
+        timestamp: Date.now(),
+        faceDetected: true,
+        landmarksCount: 478,
+        browFurrow,
+        browRaise: 0.12,
+        browTensionIndex: browFurrow,
+        eyeOpennessLeft: isBlinking ? 0.05 : 0.88,
+        eyeOpennessRight: isBlinking ? 0.05 : 0.88,
+        eyeSquint: 0.14,
+        isBlinking,
+        sessionBlinkCount: Math.floor(tick / 110) + 1,
+        blinkRatePerMin: 18,
+        jawOpen: 0.04,
+        lipPress,
+        mouthFrown: 0.06,
+        mouthSmile: 0.14,
+        pitchDeg,
+        yawDeg,
+        rollDeg: 0,
+        headMovementJitter: 0.4,
+        trackingStability: 'STABLE',
+        blendshapes: {},
+        roiForehead: [
+          { x: 260, y: 110 }, { x: 380, y: 110 }, { x: 380, y: 170 }, { x: 260, y: 170 }
+        ],
+        roiLeftCheek: [
+          { x: 210, y: 240 }, { x: 280, y: 240 }, { x: 280, y: 310 }, { x: 210, y: 310 }
+        ],
+        roiRightCheek: [
+          { x: 360, y: 240 }, { x: 430, y: 240 }, { x: 430, y: 310 }, { x: 360, y: 310 }
+        ],
+      };
+      setFacialMetrics(simMetrics);
+
+      if (overlayCanvasRef.current) {
+        const ctx = overlayCanvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, 640, 480);
+          drawSyntheticOverlays(ctx, simMetrics);
+        }
+      }
+
+      const cardiacFreq = 1.233; // 74 bpm
+      const pulsePt = Math.sin(2 * Math.PI * cardiacFreq * t) + 0.35 * Math.sin(4 * Math.PI * cardiacFreq * t);
+      syntheticWave.push(pulsePt);
+      if (syntheticWave.length > 80) syntheticWave.shift();
+
+      const pulseBpm = 74 + Math.round(Math.sin(t * 0.1) * 2);
+      const simRppg: RppgProcessingResult = {
+        status: 'ESTIMATED',
+        durationSeconds: Math.max(1, Math.round(t)),
+        bufferProgressPct: 100,
+        pulseBpm,
+        pulseSnrDb: 3.4,
+        signalQualityScore: 86,
+        hrvRmssdMs: tick > 600 ? 32.4 : null,
+        hrvStatus: tick > 600 ? 'COMPUTED' : 'INSUFFICIENT_DURATION',
+        hrvReason: tick > 600
+          ? 'Pulse-Rate Variability derived from continuous 60s+ optical peak intervals.'
+          : 'Recording duration must exceed 60 continuous seconds of stable signal for HRV analysis.',
+        ppgWaveform: [...syntheticWave],
+        spectralPeakHz: 1.23,
+        cardiacPowerDistribution: [
+          { hz: 1.1, power: 0.15 },
+          { hz: 1.23, power: 0.95 },
+          { hz: 1.35, power: 0.12 },
+        ],
+        lightingQuality: 'OPTIMAL',
+        motionStatus: 'STABLE',
+      };
+      setRppgResult(simRppg);
+      drawPpgWaveform(syntheticWave);
+
+      const stressEval = stressAnalysisPipeline.evaluate(simMetrics, simRppg, userReportedStress);
+      setStressOutput(stressEval);
+    }, 33);
+  };
+
+  const drawSyntheticOverlays = (ctx: CanvasRenderingContext2D, metrics: FacialMetrics) => {
+    const cx = 320;
+    const cy = 240;
+
+    // Silhouette face contour
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 110, 150, 0, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    // Eyes
+    const leftEyeOpen = metrics.eyeOpennessLeft;
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.7)';
+    ctx.beginPath();
+    ctx.ellipse(cx - 45, cy - 25, 14, Math.max(1, 10 * leftEyeOpen), 0, 0, 2 * Math.PI);
+    ctx.ellipse(cx + 45, cy - 25, 14, Math.max(1, 10 * leftEyeOpen), 0, 0, 2 * Math.PI);
+    ctx.fill();
+
+    // Eyebrows
+    const browY = cy - 45 + metrics.browFurrow * 8;
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.8)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - 65, browY + 2);
+    ctx.lineTo(cx - 25, browY);
+    ctx.moveTo(cx + 25, browY);
+    ctx.lineTo(cx + 65, browY + 2);
+    ctx.stroke();
+
+    // Mouth
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy + 65, 25, 0.1 * Math.PI, 0.9 * Math.PI);
+    ctx.stroke();
+
+    // ROIs
+    if (showRois) {
+      // Forehead ROI
+      ctx.strokeStyle = '#10B981';
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(cx - 60, cy - 130, 120, 50);
+      ctx.strokeRect(cx - 60, cy - 130, 120, 50);
+      ctx.fillStyle = '#10B981';
+      ctx.font = '10px monospace';
+      ctx.fillText('Forehead ROI', cx - 55, cy - 115);
+
+      // Left Cheek ROI
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+      ctx.fillRect(cx - 95, cy + 5, 55, 55);
+      ctx.strokeRect(cx - 95, cy + 5, 55, 55);
+      ctx.fillStyle = '#10B981';
+      ctx.fillText('L Cheek', cx - 90, cy + 25);
+
+      // Right Cheek ROI
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+      ctx.fillRect(cx + 40, cy + 5, 55, 55);
+      ctx.strokeRect(cx + 40, cy + 5, 55, 55);
+      ctx.fillStyle = '#10B981';
+      ctx.fillText('R Cheek', cx + 45, cy + 25);
+    }
+  };
+
+  // Stop Camera & Simulation Stream
   const stopCamera = () => {
     setIsCapturing(false);
+    setIsSimulating(false);
+
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+      simulationIntervalRef.current = null;
+    }
 
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -248,7 +442,7 @@ export const CameraSignalResearchView: React.FC = () => {
       // 5. Draw live PPG Waveform Canvas
       drawPpgWaveform(rppgRes.ppgWaveform);
 
-      // 6. Multimodal Stress Feature Vector Assembly & Transparent Spec Evaluation
+      // 6. Multimodal Stress Feature Vector Assembly & Spec Evaluation
       const stressEval = stressAnalysisPipeline.evaluate(metrics, rppgRes, userReportedStress);
       setStressOutput(stressEval);
 
@@ -306,9 +500,32 @@ export const CameraSignalResearchView: React.FC = () => {
     ctx.stroke();
   };
 
+  // Record Heart Rate Directly to Clinical Observation Chart
+  const handleRecordVitals = async () => {
+    if (!effectivePatientId || !rppgResult?.pulseBpm) return;
+    setIsSavingObservation(true);
+    setObsSavedMsg(null);
+    try {
+      await api.createObservation(effectivePatientId, {
+        observation_type: 'vital_signs',
+        test_name: 'Heart Rate (Optical rPPG)',
+        value_numeric: rppgResult.pulseBpm,
+        unit: 'bpm',
+        reference_range: '60-100 bpm',
+        source_type: 'camera_rppg',
+      });
+      setObsSavedMsg(`Recorded ${rppgResult.pulseBpm} bpm directly into maternal observation vitals chart.`);
+      setTimeout(() => setObsSavedMsg(null), 5000);
+    } catch (err: any) {
+      alert(`Could not record observation: ${err.message || err}`);
+    } finally {
+      setIsSavingObservation(false);
+    }
+  };
+
   // Save Session Derived Data (with Consent)
   const handleSaveSession = async () => {
-    if (!selectedPatientId || !facialMetrics) return;
+    if (!effectivePatientId || !facialMetrics) return;
 
     setIsSavingSession(true);
     setSaveSuccessMsg(null);
@@ -346,7 +563,7 @@ export const CameraSignalResearchView: React.FC = () => {
     };
 
     try {
-      await api.logCameraSignal(selectedPatientId, payload);
+      await api.logCameraSignal(effectivePatientId, payload);
       setSaveSuccessMsg('Derived session metrics and feature vector recorded successfully (Zero raw video persisted).');
       await loadSessions();
       setTimeout(() => setSaveSuccessMsg(null), 5000);
@@ -399,21 +616,47 @@ export const CameraSignalResearchView: React.FC = () => {
                   Stop Session ({recordingSeconds}s)
                 </Button>
               ) : (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon={<Play className="w-4 h-4 fill-white" />}
-                  onClick={startCamera}
-                  disabled={!modelReady && isModelLoading}
-                  isLoading={isModelLoading}
-                >
-                  {isModelLoading ? 'Loading Vision Models...' : 'Start Camera Session'}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={<Play className="w-4 h-4 fill-white" />}
+                    onClick={startCamera}
+                    disabled={!modelReady && isModelLoading}
+                    isLoading={isModelLoading}
+                  >
+                    {isModelLoading ? 'Loading Vision Models...' : 'Start Camera Session'}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<Sparkles className="w-4 h-4 text-sky-600" />}
+                    onClick={startSimulation}
+                  >
+                    Simulate Optical Scan
+                  </Button>
+                </div>
               )
             )}
           </div>
         }
       />
+
+      {/* Active Participant Header Badge */}
+      {effectivePatientId && (
+        <div className="flex items-center justify-between bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-slate-700">Active Maternal Participant:</span>
+            <span className="font-mono font-bold text-sky-900">
+              {selectedPatient ? selectedPatient.first_name + ' ' + selectedPatient.last_name : user?.full_name || 'Maya Lin'}
+            </span>
+            <span className="text-slate-500 font-mono">
+              ({selectedPatient?.mrn || 'MRN-88421'})
+            </span>
+          </div>
+          <Badge variant="neutral">Longitudinal Cohort Session</Badge>
+        </div>
+      )}
 
       {/* Mandatory Non-Diagnostic Clinical Research Disclaimer */}
       <Alert
@@ -436,11 +679,25 @@ export const CameraSignalResearchView: React.FC = () => {
       />
 
       {cameraError && (
-        <Alert
-          variant="danger"
-          title="Camera Initialization Notice"
-          description={cameraError}
-        />
+        <div className="space-y-2">
+          <Alert
+            variant="danger"
+            title="Camera Initialization Notice"
+            description={cameraError}
+          />
+          <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl flex items-center justify-between text-xs">
+            <span className="text-sky-900 font-medium">Want to evaluate without a physical webcam?</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Sparkles className="w-3.5 h-3.5 text-sky-600" />}
+              onClick={startSimulation}
+              className="bg-white"
+            >
+              Run Synthetic Optical Demo
+            </Button>
+          </div>
+        </div>
       )}
 
       {saveSuccessMsg && (
@@ -448,6 +705,14 @@ export const CameraSignalResearchView: React.FC = () => {
           variant="success"
           title="Session Recorded"
           description={saveSuccessMsg}
+        />
+      )}
+
+      {obsSavedMsg && (
+        <Alert
+          variant="success"
+          title="Vitals Chart Updated"
+          description={obsSavedMsg}
         />
       )}
 
@@ -463,7 +728,7 @@ export const CameraSignalResearchView: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant={isCapturing ? 'success' : 'neutral'}>
-                    {isCapturing ? `REC: ${recordingSeconds}s` : 'STANDBY'}
+                    {isCapturing ? (isSimulating ? `SIM: ${recordingSeconds}s` : `REC: ${recordingSeconds}s`) : 'STANDBY'}
                   </Badge>
                   {isCapturing && (
                     <div className="flex items-center gap-1.5 ml-2 text-xs text-slate-500">
@@ -497,7 +762,7 @@ export const CameraSignalResearchView: React.FC = () => {
                     ref={videoRef}
                     playsInline
                     muted
-                    className={`w-full h-full object-cover transform -scale-x-100 ${!isCapturing ? 'hidden' : 'block'}`}
+                    className={`w-full h-full object-cover transform -scale-x-100 ${!isCapturing || isSimulating ? 'hidden' : 'block'}`}
                   />
 
                   {/* Overlaid Canvas with Face Landmarks & ROIs */}
@@ -508,6 +773,14 @@ export const CameraSignalResearchView: React.FC = () => {
                     }`}
                   />
 
+                  {/* Synthetic Mode Badge Overlay */}
+                  {isCapturing && isSimulating && (
+                    <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-sky-950/85 backdrop-blur border border-sky-400/40 text-sky-200 px-2.5 py-1 rounded-full text-xs font-mono shadow-md">
+                      <Sparkles className="w-3.5 h-3.5 text-sky-300 animate-spin" />
+                      <span>Synthetic Optical Scan Mode</span>
+                    </div>
+                  )}
+
                   {/* Offline / Standby State */}
                   {!isCapturing && (
                     <div className="text-center p-6 space-y-3">
@@ -517,8 +790,28 @@ export const CameraSignalResearchView: React.FC = () => {
                       <div>
                         <h4 className="text-sm font-bold text-white">Camera Offline</h4>
                         <p className="text-xs text-slate-400 max-w-sm mt-1">
-                          Click "Start Camera Session" to begin live optical landmark tracking and remote photoplethysmography.
+                          Click "Start Camera Session" to begin live optical tracking, or run a simulated optical scan without a webcam.
                         </p>
+                        <div className="mt-4 flex items-center justify-center gap-2">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            icon={<Play className="w-4 h-4 fill-white" />}
+                            onClick={startCamera}
+                            disabled={!modelReady && isModelLoading}
+                          >
+                            Start Camera
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon={<Sparkles className="w-4 h-4 text-sky-400" />}
+                            onClick={startSimulation}
+                            className="bg-slate-800 text-white border-slate-700 hover:bg-slate-700"
+                          >
+                            Simulate Optical Scan
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -686,6 +979,27 @@ export const CameraSignalResearchView: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Direct Sync to Maternal Vitals Chart */}
+                {rppgResult?.pulseBpm && (
+                  <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-sky-950 block">Sync to Clinical Chart</span>
+                      <span className="text-[11px] text-sky-700">Record measured optical pulse ({rppgResult.pulseBpm} bpm) into observations.</span>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="text-xs bg-white text-sky-800 border-sky-300 hover:bg-sky-100"
+                      icon={<Activity className="w-3.5 h-3.5 text-sky-600" />}
+                      onClick={handleRecordVitals}
+                      isLoading={isSavingObservation}
+                      disabled={isSavingObservation}
+                    >
+                      Record to Vitals
+                    </Button>
+                  </div>
+                )}
+
                 {/* Status Callout / Convergence Progress */}
                 {rppgResult?.status === 'BUFFERING' && (
                   <div className="space-y-1.5 p-3 bg-sky-50 border border-sky-200 rounded-lg text-xs text-sky-900">
@@ -745,31 +1059,115 @@ export const CameraSignalResearchView: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700">
                     <Sparkles className="w-4 h-4" />
-                    <span>Multimodal Stress Estimation Pipeline</span>
+                    <span>Autonomic Arousal & Facial Tension Analysis</span>
                   </div>
-                  <CardTitle className="text-base mt-0.5">Model Status & Feature Assembly</CardTitle>
+                  <CardTitle className="text-base mt-0.5">Physiological Tension & Stress State</CardTitle>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() => setShowModelCardModal(true)}
-                  icon={<Info className="w-3.5 h-3.5" />}
-                >
-                  Model Card
-                </Button>
+                <div className="flex items-center gap-2">
+                  {stressOutput?.tensionIndicator && (
+                    <Badge
+                      variant={
+                        stressOutput.tensionIndicator.category === 'RELAXED_OPTIMAL'
+                          ? 'success'
+                          : stressOutput.tensionIndicator.category === 'MILD_TENSION'
+                          ? 'info'
+                          : stressOutput.tensionIndicator.category === 'MODERATE_TENSION'
+                          ? 'warning'
+                          : 'danger'
+                      }
+                    >
+                      {stressOutput.tensionIndicator.label.toUpperCase()}
+                    </Badge>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => setShowModelCardModal(true)}
+                    icon={<Info className="w-3.5 h-3.5" />}
+                  >
+                    Model Card
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Honest Model Unavailable State */}
-                <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
-                  <div className="flex items-center gap-2 text-amber-900 font-semibold text-xs">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>Automated Stress Classifier: NOT INTEGRATED (Awaiting Validated Model)</span>
+                {/* Live Physiological Tension Gauge Meter */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                  <div className="flex items-baseline justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-slate-500 block">Observable Physical Tension Index</span>
+                      <div className="flex items-baseline gap-2 mt-0.5">
+                        <span className="text-3xl font-extrabold font-mono text-slate-900">
+                          {stressOutput?.tensionIndicator?.score !== undefined ? `${stressOutput.tensionIndicator.score}` : '--'}
+                        </span>
+                        <span className="text-xs font-mono text-slate-500">/ 10</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs font-semibold text-slate-800 block">
+                        {stressOutput?.tensionIndicator?.label || (isCapturing ? 'Analyzing movements...' : 'Standby')}
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        {stressOutput?.tensionIndicator?.description || 'Start session or run simulation to compute live tension index.'}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-xs text-amber-950 leading-relaxed">
-                    PregTwin does not fabricate an arbitrary stress score or pseudo-percentage from facial movements alone.
-                    The pipeline assembles an objective <strong>Multimodal Feature Vector</strong> (FACS movements, rPPG pulse, tracking stability)
-                    for research comparison.
+
+                  {/* Tension Meter Bar */}
+                  <div className="space-y-1">
+                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden flex">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          (stressOutput?.tensionIndicator?.score || 0) < 3.5
+                            ? 'bg-emerald-500'
+                            : (stressOutput?.tensionIndicator?.score || 0) < 5.5
+                            ? 'bg-sky-500'
+                            : (stressOutput?.tensionIndicator?.score || 0) < 7.5
+                            ? 'bg-amber-500'
+                            : 'bg-rose-500'
+                        }`}
+                        style={{ width: `${Math.min(100, Math.max(5, ((stressOutput?.tensionIndicator?.score || 0) / 10) * 100))}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                      <span>1.0 (Relaxed)</span>
+                      <span>5.0 (Moderate)</span>
+                      <span>10.0 (Elevated)</span>
+                    </div>
+                  </div>
+
+                  {/* Component Drivers */}
+                  {stressOutput?.tensionIndicator && (
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 text-[11px]">
+                      <div className="p-2 bg-white rounded border border-slate-200">
+                        <span className="text-slate-500 block text-[10px]">Brow Furrow AU4</span>
+                        <span className="font-semibold text-slate-800">{stressOutput.tensionIndicator.drivers.browTension.label}</span>
+                      </div>
+                      <div className="p-2 bg-white rounded border border-slate-200">
+                        <span className="text-slate-500 block text-[10px]">Lip Compression AU24</span>
+                        <span className="font-semibold text-slate-800">{stressOutput.tensionIndicator.drivers.lipPress.label}</span>
+                      </div>
+                      <div className="p-2 bg-white rounded border border-slate-200">
+                        <span className="text-slate-500 block text-[10px]">Blink Cadence</span>
+                        <span className="font-semibold text-slate-800">{stressOutput.tensionIndicator.drivers.blinkCadence.label}</span>
+                      </div>
+                      <div className="p-2 bg-white rounded border border-slate-200">
+                        <span className="text-slate-500 block text-[10px]">Autonomic Cardiac</span>
+                        <span className="font-semibold text-slate-800">{stressOutput.tensionIndicator.drivers.pulseArousal.label}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Honest Model Research State Notice */}
+                <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1 text-xs">
+                  <div className="flex items-center gap-1.5 font-semibold text-amber-900">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Maternal Research Specification: Feature Assembly vs. Psychiatric Assessment</span>
+                  </div>
+                  <p className="text-[11px] text-amber-950 leading-relaxed">
+                    PregTwin does not fabricate speculative psychological diagnoses from camera movements alone.
+                    Observable facial dynamics and optical cardiac pulses are mapped to physical tension indexes, while automated maternal psychiatric stress classification remains officially marked as awaiting validated prospective clinical cohorts.
                   </p>
                 </div>
 

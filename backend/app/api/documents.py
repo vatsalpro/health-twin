@@ -167,9 +167,17 @@ def _format_document_response(doc: MedicalDocument) -> MedicalDocumentResponse:
             provider_metadata=doc.summary.provider_metadata,
         )
 
+    patient_name = None
+    patient_mrn = None
+    if getattr(doc, "patient", None):
+        patient_name = f"{doc.patient.first_name} {doc.patient.last_name}".strip()
+        patient_mrn = doc.patient.mrn
+
     return MedicalDocumentResponse(
         id=doc.id,
         patient_id=doc.patient_id,
+        patient_name=patient_name,
+        patient_mrn=patient_mrn,
         episode_id=doc.episode_id,
         filename=doc.filename,
         file_size_bytes=doc.file_size_bytes,
@@ -181,6 +189,7 @@ def _format_document_response(doc: MedicalDocument) -> MedicalDocumentResponse:
         ocr_engine=doc.ocr_engine,
         ai_provider=doc.ai_provider,
         page_count=doc.page_count,
+        extracted_text=doc.extracted_text,
         created_at=doc.created_at,
         extracted_fields=fields_data,
         summary=summary_data,
@@ -310,6 +319,16 @@ async def upload_document(
 
     return _format_document_response(doc)
 
+@router.get("/patient/{patient_id}", response_model=List[MedicalDocumentResponse])
+def get_patient_documents(
+    patient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_patient_access(patient_id, current_user, db)
+    docs = db.query(MedicalDocument).filter(MedicalDocument.patient_id == patient_id).order_by(MedicalDocument.created_at.desc()).all()
+    return [_format_document_response(d) for d in docs]
+
 @router.get("/{document_id}", response_model=MedicalDocumentResponse)
 def get_document(
     document_id: str,
@@ -333,6 +352,22 @@ def download_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
     verify_patient_access(doc.patient_id, current_user, db)
     return FileResponse(doc.file_path, media_type=doc.mime_type, filename=doc.filename)
+
+@router.get("/{document_id}/file")
+def get_document_file(
+    document_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    doc = db.query(MedicalDocument).filter(MedicalDocument.id == document_id).first()
+    if not doc or not os.path.exists(doc.file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    verify_patient_access(doc.patient_id, current_user, db)
+    return FileResponse(
+        doc.file_path,
+        media_type=doc.mime_type or "application/pdf",
+        content_disposition_type="inline"
+    )
 
 @router.post("/{document_id}/fields/{field_id}/review")
 def review_extracted_field(

@@ -77,16 +77,30 @@ export class FaceLandmarkerService {
         modelPath = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
       }
 
-      this.landmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: modelPath,
-          delegate: 'GPU',
-        },
-        runningMode: 'VIDEO',
-        outputFaceBlendshapes: true,
-        outputFacialTransformationMatrixes: true,
-        numFaces: 1,
-      });
+      try {
+        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: modelPath,
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          outputFaceBlendshapes: true,
+          outputFacialTransformationMatrixes: true,
+          numFaces: 1,
+        });
+      } catch (gpuErr) {
+        console.warn('GPU delegate failed for FaceLandmarker, falling back to CPU:', gpuErr);
+        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: modelPath,
+            delegate: 'CPU',
+          },
+          runningMode: 'VIDEO',
+          outputFaceBlendshapes: true,
+          outputFacialTransformationMatrixes: true,
+          numFaces: 1,
+        });
+      }
 
       this.sessionStartTime = Date.now();
       return true;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api, Appointment, DoctorSlot, DoctorScheduleDay } from '../api/client';
 import {
@@ -40,6 +40,55 @@ export const AppointmentsView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'appointments' | 'schedule'>('appointments');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [statusCategory, setStatusCategory] = useState<'all' | 'scheduled' | 'rescheduled' | 'cancelled'>('all');
+  const [clinicianFilterPatientId, setClinicianFilterPatientId] = useState<string>('ALL');
+  const [currentTime, setCurrentTime] = useState<number>(Date.now());
+
+  // Real-time 1-second ticker for smooth countdown and auto-clearing after 2 minutes
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Safe UTC date parser to prevent local timezone offsets distorting cancelled_at
+  const getUtcTimestamp = (dateStr?: string | null): number | null => {
+    if (!dateStr) return null;
+    const clean = dateStr.trim();
+    const normalized = clean.endsWith('Z') || clean.includes('+') || clean.match(/-\d{2}:\d{2}$/)
+      ? clean
+      : `${clean}Z`;
+    const d = new Date(normalized);
+    return isNaN(d.getTime()) ? null : d.getTime();
+  };
+
+  // Filter out cancelled appointments older than 2 minutes (120 seconds)
+  const activeAppointments = useMemo(() => {
+    return appointments.filter((a) => {
+      if (a.status !== 'CANCELLED') return true;
+      const cancelTs = getUtcTimestamp(a.cancelled_at) ?? getUtcTimestamp(a.updated_at);
+      if (cancelTs === null) {
+        return true;
+      }
+      const elapsedMs = currentTime - cancelTs;
+      const safeElapsed = Math.max(0, elapsedMs);
+      return safeElapsed < 2 * 60 * 1000;
+    });
+  }, [appointments, currentTime]);
+
+  const scheduledAppts = useMemo(() =>
+    activeAppointments.filter((a) => a.status === 'SCHEDULED' || a.status === 'CONFIRMED'),
+    [activeAppointments]
+  );
+  const rescheduledAppts = useMemo(() =>
+    activeAppointments.filter((a) => a.status === 'RESCHEDULED'),
+    [activeAppointments]
+  );
+  const cancelledAppts = useMemo(() =>
+    activeAppointments.filter((a) => a.status === 'CANCELLED'),
+    [activeAppointments]
+  );
   const [bookModalOpen, setBookModalOpen] = useState(false);
   const [followupPatientId, setFollowupPatientId] = useState<string>(
     selectedPatientId || (allPatients && allPatients.length > 0 ? allPatients[0].id : '')
@@ -77,15 +126,18 @@ export const AppointmentsView: React.FC = () => {
   const [rescheduleReason, setRescheduleReason] = useState('Patient schedule adjustment');
   const [reschedulingLoading, setReschedulingLoading] = useState(false);
 
-  const doctorUserId = user?.id || '4f85f958-d7eb-4a1a-a292-b15760c3a073';
+  // Correct doctor user ID: For clinician it's user.id; for patient it's Dr. Elena Vance
+  const doctorUserId = isClinician && user?.id ? user.id : '4f85f958-d7eb-4a1a-a292-b15760c3a073';
 
   const fetchAppointments = async () => {
     try {
       setLoading(true);
-      const list = await api.getAppointments(
-        effectivePatientId || undefined,
-        isClinician ? user?.id : undefined
-      );
+      const patientQueryId = isClinician
+        ? (clinicianFilterPatientId !== 'ALL' ? clinicianFilterPatientId : undefined)
+        : (effectivePatientId || undefined);
+      const doctorQueryId = isClinician ? user?.id : undefined;
+
+      const list = await api.getAppointments(patientQueryId, doctorQueryId);
       setAppointments(list);
     } catch (err) {
       console.error('Failed to load appointments:', err);
@@ -116,7 +168,7 @@ export const AppointmentsView: React.FC = () => {
     if (isClinician) {
       fetchDoctorSchedule();
     }
-  }, [effectivePatientId, isClinician]);
+  }, [effectivePatientId, isClinician, clinicianFilterPatientId]);
 
   // Load slots when book modal or date changes
   useEffect(() => {
@@ -181,12 +233,17 @@ export const AppointmentsView: React.FC = () => {
         doctor_id: selectedSlot.doctor_id,
         scheduled_start: selectedSlot.start_time,
         scheduled_end: selectedSlot.end_time,
+        start_time: selectedSlot.start_time,
+        end_time: selectedSlot.end_time,
         appointment_type: appointmentType,
-        reason,
+        reason: reason.trim() || 'Routine prenatal consultation',
         booked_via: isClinician ? 'CLINICIAN_FOLLOWUP' : 'UI_WEB',
+        booking_channel: isClinician ? 'clinician_followup' : 'ui_web',
       });
 
       setBookModalOpen(false);
+      setReason('');
+      setSelectedSlot(null);
       await fetchAppointments();
     } catch (err: any) {
       alert(err.message || 'Slot reservation failed. It may have been reserved concurrently.');
@@ -205,10 +262,12 @@ export const AppointmentsView: React.FC = () => {
         rescheduleModalAppt.id,
         selectedRescheduleSlot.start_time,
         selectedRescheduleSlot.end_time,
-        rescheduleReason
+        rescheduleReason.trim() || 'Patient requested reschedule'
       );
 
       setRescheduleModalAppt(null);
+      setSelectedRescheduleSlot(null);
+      setRescheduleReason('');
       await fetchAppointments();
     } catch (err: any) {
       alert(err.message || 'Rescheduling failed.');
@@ -222,10 +281,17 @@ export const AppointmentsView: React.FC = () => {
     if (!cancelModalAppt) return;
 
     try {
-      await api.cancelAppointment(cancelModalAppt.id, cancelReason);
+      await api.cancelAppointment(
+        cancelModalAppt.id,
+        cancelReason.trim() || 'Patient requested cancellation'
+      );
       setCancelModalAppt(null);
       setCancelReason('');
       await fetchAppointments();
+      // Ensure the user immediately sees the cancelled appointment for the 2-minute window
+      if (statusCategory === 'scheduled') {
+        setStatusCategory('all');
+      }
     } catch (err: any) {
       alert(err.message || 'Failed to cancel appointment');
     }
@@ -252,12 +318,223 @@ export const AppointmentsView: React.FC = () => {
     );
   };
 
-  const formatDateTime = (isoStr: string) => {
+  /**
+   * Formats a 24-hour time string ("09:00", "17:00") into a clean 12-hour AM/PM string ("9:00 AM", "5:00 PM").
+   */
+  const formatTime12h = (timeStr?: string): string => {
+    if (!timeStr) return '--:--';
+    const clean = timeStr.trim();
+    const m = clean.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (m) {
+      let hr = parseInt(m[1], 10);
+      const min = m[2];
+      const ampm = hr >= 12 ? 'PM' : 'AM';
+      hr = hr % 12;
+      if (hr === 0) hr = 12;
+      return `${hr}:${min} ${ampm}`;
+    }
+    const ampmM = clean.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+    if (ampmM) {
+      let hr = parseInt(ampmM[1], 10);
+      return `${hr}:${ampmM[2]} ${ampmM[3].toUpperCase()}`;
+    }
+    return clean;
+  };
+
+  /**
+   * Returns formatted 12-hour AM/PM slot time for UI buttons, preventing timezone offset bugs.
+   */
+  const getSlotDisplayTime = (slot: DoctorSlot): string => {
+    if (slot.formatted_time) {
+      return slot.formatted_time.replace(/^0(\d:)/, '$1');
+    }
+    if (slot.start_time) {
+      const d = new Date(slot.start_time);
+      if (!isNaN(d.getTime())) {
+        const utcHr = d.getUTCHours();
+        const utcMin = d.getUTCMinutes().toString().padStart(2, '0');
+        const ampm = utcHr >= 12 ? 'PM' : 'AM';
+        let hr12 = utcHr % 12;
+        if (hr12 === 0) hr12 = 12;
+        return `${hr12}:${utcMin} ${ampm}`;
+      }
+    }
+    return '--:--';
+  };
+
+  const formatDateTime = (isoStr?: string, formattedTimeFallback?: string, formattedDateFallback?: string) => {
+    if (formattedTimeFallback && formattedDateFallback) {
+      return { date: formattedDateFallback, time: formattedTimeFallback };
+    }
+    if (!isoStr) return { date: formattedDateFallback || 'Date not set', time: formattedTimeFallback || '--:--' };
     const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return { date: formattedDateFallback || 'Date not set', time: formattedTimeFallback || '--:--' };
+
+    let timeStr = formattedTimeFallback;
+    if (!timeStr) {
+      if (isoStr.endsWith('Z') || isoStr.includes('+00:00')) {
+        const utcHr = d.getUTCHours();
+        const utcMin = d.getUTCMinutes().toString().padStart(2, '0');
+        const ampm = utcHr >= 12 ? 'PM' : 'AM';
+        let hr12 = utcHr % 12;
+        if (hr12 === 0) hr12 = 12;
+        timeStr = `${hr12}:${utcMin} ${ampm}`;
+      } else {
+        timeStr = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
+      }
+    }
+
+    const dateStr = formattedDateFallback || (
+      (isoStr.endsWith('Z') || isoStr.includes('+00:00'))
+        ? d.toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+        : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    );
+
     return {
-      date: d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
-      time: d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
+      date: dateStr,
+      time: timeStr,
     };
+  };
+
+  const renderAppointmentCard = (appt: Appointment) => {
+    const startIso = appt.scheduled_start || (appt as any).start_time;
+    const endIso = appt.scheduled_end || (appt as any).end_time || startIso;
+    const startDt = formatDateTime(startIso, appt.formatted_time, appt.formatted_date);
+    const endDt = formatDateTime(endIso);
+    const isPast = endIso ? new Date(endIso).getTime() < Date.now() : false;
+    const isCancelled = appt.status === 'CANCELLED';
+    const isRescheduled = appt.status === 'RESCHEDULED';
+    const isCraneBooked =
+      (appt.booked_via || (appt as any).booking_channel)?.toUpperCase() === 'AI_ASSISTANT';
+
+    return (
+      <div
+        key={appt.id}
+        className={`glass-panel p-5 relative overflow-hidden flex flex-col justify-between border transition-all ${
+          isCancelled
+            ? 'border-red-200/60 bg-red-50/20 opacity-80'
+            : isRescheduled
+            ? 'border-blue-200/90 bg-blue-50/25 shadow-xs'
+            : 'border-purple-200/90 hover:border-purple-300'
+        }`}
+      >
+        <div className="space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wide uppercase flex items-center gap-1 ${
+                  appt.status === 'CONFIRMED' || appt.status === 'SCHEDULED'
+                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                    : isRescheduled
+                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                    : isCancelled
+                    ? 'bg-red-100 text-red-800 border border-red-200'
+                    : 'bg-emerald-100 text-emerald-800'
+                }`}
+              >
+                {isRescheduled && <RotateCcw className="w-2.5 h-2.5" />}
+                {isCancelled && <XCircle className="w-2.5 h-2.5" />}
+                {appt.status}
+              </span>
+              {isCancelled && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 border border-red-200 flex items-center gap-1 animate-pulse">
+                  <Clock className="w-2.5 h-2.5" />
+                  Auto-clears in {Math.max(0, Math.ceil((120000 - Math.max(0, currentTime - (getUtcTimestamp(appt.cancelled_at) ?? currentTime))) / 1000))}s
+                </span>
+              )}
+              {isPast && !isCancelled && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                  Completed / Past
+                </span>
+              )}
+            </div>
+
+            <span className="text-[10px] font-semibold text-purple-700 flex items-center gap-1 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200/60">
+              <Sparkles className="w-3 h-3 text-purple-600" />
+              {isCraneBooked ? 'Booked via Dr. Crane AI' : 'Doctor Schedule Booking'}
+            </span>
+          </div>
+
+          <div>
+            <h3 className="text-base font-black text-purple-950 flex items-center gap-1.5">
+              <User className="w-4 h-4 text-purple-700" />
+              <span>{appt.doctor_name || 'Dr. Elena Vance, MD'}</span>
+            </h3>
+            {appt.patient_name && (
+              <p className="text-xs font-semibold text-slate-600 mt-0.5">
+                Patient: <span className="text-purple-900 font-bold">{appt.patient_name}</span>
+              </p>
+            )}
+          </div>
+
+          <div
+            className={`p-3 rounded-xl border flex items-center justify-between ${
+              isCancelled
+                ? 'bg-red-50/50 border-red-100'
+                : isRescheduled
+                ? 'bg-blue-50/60 border-blue-100'
+                : 'bg-purple-50/50 border-purple-100'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <CalendarIcon
+                className={`w-4 h-4 shrink-0 ${
+                  isCancelled ? 'text-red-600' : isRescheduled ? 'text-blue-600' : 'text-purple-600'
+                }`}
+              />
+              <div>
+                <p className="text-xs font-bold text-slate-800">{startDt.date}</p>
+                <p
+                  className={`text-[11px] font-mono font-semibold ${
+                    isCancelled ? 'text-red-700 line-through' : isRescheduled ? 'text-blue-700' : 'text-purple-700'
+                  }`}
+                >
+                  {startDt.time} &ndash; {endDt.time}
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              {appt.appointment_type.replace(/_/g, ' ')}
+            </span>
+          </div>
+
+          {isCancelled && appt.cancellation_reason && (
+            <p className="text-xs text-red-800 leading-relaxed bg-red-50/70 p-2 rounded-xl border border-red-200">
+              <strong className="text-red-950 font-bold">Cancellation Reason:</strong> {appt.cancellation_reason}
+            </p>
+          )}
+
+          {appt.reason && (
+            <p className="text-xs text-slate-600 leading-relaxed">
+              <strong className="text-slate-800">
+                {isCancelled ? 'Original Visit Purpose:' : isRescheduled ? 'Reschedule Note / Reason:' : 'Reason:'}
+              </strong>{' '}
+              {appt.reason}
+            </p>
+          )}
+        </div>
+
+        {/* Actions */}
+        {!isCancelled && !isPast && (
+          <div className="mt-4 pt-3 border-t border-purple-100 flex items-center justify-end gap-2">
+            <button
+              onClick={() => setRescheduleModalAppt(appt)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-purple-700 hover:bg-purple-100/70 text-xs font-bold transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reschedule</span>
+            </button>
+            <button
+              onClick={() => setCancelModalAppt(appt)}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              <span>Cancel</span>
+            </button>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -367,7 +644,7 @@ export const AppointmentsView: React.FC = () => {
                   {/* Hours Configuration */}
                   {day.is_active ? (
                     <div className="flex flex-wrap items-center gap-4 text-xs">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-slate-500 text-[11px] font-semibold">Hours:</span>
                         <input
                           type="time"
@@ -382,6 +659,14 @@ export const AppointmentsView: React.FC = () => {
                           onChange={(e) => updateDaySchedule(idx, 'end_time', e.target.value)}
                           className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white font-mono text-xs"
                         />
+                        <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold text-[11px] border border-purple-200">
+                          {formatTime12h(day.start_time)} &ndash; {formatTime12h(day.end_time)}
+                        </span>
+                        {day.end_time && day.start_time && day.end_time <= day.start_time && (
+                          <span className="text-[10px] text-amber-700 font-medium bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                            End time is AM ({formatTime12h(day.end_time)}). For afternoon PM, use 24h format (e.g. 17:00 for 5:00 PM).
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1.5">
@@ -424,123 +709,323 @@ export const AppointmentsView: React.FC = () => {
         </div>
       ) : (
         /* Appointments List Tab */
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-extrabold text-purple-950 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-purple-600" />
-              <span>Scheduled Consultations</span>
-            </h2>
-            <span className="text-xs text-slate-500 font-medium">
-              Appointments synced with Dr. Crane AI coordination
-            </span>
+        <div className="space-y-6">
+          {/* Top Status & Category Filter Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-purple-100 pb-4">
+            <div>
+              <h2 className="text-base font-extrabold text-purple-950 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-purple-600" />
+                <span>Doctor Consultations & Visits</span>
+              </h2>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                {isClinician
+                  ? 'Track your scheduled, rescheduled, and cancelled patient consultations.'
+                  : 'View and manage your scheduled, rescheduled, and cancelled consultations with Dr. Vance.'}
+              </p>
+            </div>
+
+            {/* Clinician Patient Filter & Category Filter Pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              {isClinician && allPatients && allPatients.length > 0 && (
+                <div className="flex items-center gap-1.5 p-1 bg-purple-50/80 rounded-xl border border-purple-200 mr-1">
+                  <span className="text-[11px] font-bold text-purple-900 pl-2 flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-purple-700" />
+                    Patient:
+                  </span>
+                  <select
+                    value={clinicianFilterPatientId}
+                    onChange={(e) => setClinicianFilterPatientId(e.target.value)}
+                    className="px-2.5 py-1 rounded-lg border border-purple-200 bg-white text-xs font-bold text-purple-950 focus:ring-purple-500 shadow-2xs"
+                  >
+                    <option value="ALL">All Patients (Practice Overview)</option>
+                    {allPatients.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.first_name} {p.last_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setStatusCategory('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  statusCategory === 'all'
+                    ? 'bg-purple-700 text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-purple-50'
+                }`}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>All</span>
+                <span
+                  className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] ${
+                    statusCategory === 'all' ? 'bg-purple-900 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {activeAppointments.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusCategory('scheduled')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  statusCategory === 'scheduled'
+                    ? 'bg-purple-700 text-white shadow-xs'
+                    : 'bg-white border border-purple-200 text-purple-900 hover:bg-purple-50'
+                }`}
+              >
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Scheduled</span>
+                <span
+                  className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] ${
+                    statusCategory === 'scheduled' ? 'bg-purple-900 text-white' : 'bg-purple-100 text-purple-800'
+                  }`}
+                >
+                  {scheduledAppts.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusCategory('rescheduled')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  statusCategory === 'rescheduled'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-white border border-blue-200 text-blue-900 hover:bg-blue-50'
+                }`}
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-blue-500" />
+                <span>Rescheduled</span>
+                <span
+                  className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] ${
+                    statusCategory === 'rescheduled' ? 'bg-blue-800 text-white' : 'bg-blue-100 text-blue-800'
+                  }`}
+                >
+                  {rescheduledAppts.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusCategory('cancelled')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  statusCategory === 'cancelled'
+                    ? 'bg-red-600 text-white shadow-xs'
+                    : 'bg-white border border-red-200 text-red-900 hover:bg-red-50'
+                }`}
+              >
+                <XCircle className="w-3.5 h-3.5 text-red-500" />
+                <span>Cancelled</span>
+                <span
+                  className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] ${
+                    statusCategory === 'cancelled' ? 'bg-red-800 text-white' : 'bg-red-100 text-red-800'
+                  }`}
+                >
+                  {cancelledAppts.length}
+                </span>
+              </button>
+            </div>
           </div>
+
+          {/* Prominent Cancelled Consultation Banner (2-Minute Grace Window) */}
+          {cancelledAppts.length > 0 && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-red-500/10 via-amber-500/10 to-purple-500/10 border-2 border-red-300 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 animate-fade-in">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center shrink-0 text-red-600 mt-0.5 shadow-2xs">
+                  <XCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-black text-red-950 uppercase tracking-wide">
+                      Cancelled Consultation Notice
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-100 text-red-800 border border-red-200">
+                      {cancelledAppts.length} active in 2-minute grace window
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700 mt-1">
+                    <strong className="text-slate-900 font-bold">{cancelledAppts[0].doctor_name || 'Dr. Elena Vance'}</strong>
+                    {cancelledAppts[0].patient_name && <span> with <strong className="text-slate-900 font-bold">{cancelledAppts[0].patient_name}</strong></span>} on{' '}
+                    <strong className="text-purple-950 font-bold">{formatDateTime(cancelledAppts[0].scheduled_start || cancelledAppts[0].start_time, cancelledAppts[0].formatted_time, cancelledAppts[0].formatted_date).date}</strong> at{' '}
+                    <strong className="text-purple-950 font-bold">{formatDateTime(cancelledAppts[0].scheduled_start || cancelledAppts[0].start_time, cancelledAppts[0].formatted_time, cancelledAppts[0].formatted_date).time}</strong>
+                    {cancelledAppts[0].cancellation_reason && (
+                      <span className="text-red-700 font-medium"> &bull; Reason: &ldquo;{cancelledAppts[0].cancellation_reason}&rdquo;</span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 font-mono">
+                    <Clock className="w-3.5 h-3.5 text-red-600 animate-pulse" />
+                    <span>Auto-clearing permanently from schedule in </span>
+                    <strong className="text-red-700 font-bold">
+                      {Math.max(0, Math.ceil((120000 - Math.max(0, currentTime - (getUtcTimestamp(cancelledAppts[0].cancelled_at) ?? currentTime))) / 1000))}s
+                    </strong>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setStatusCategory('cancelled')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    statusCategory === 'cancelled'
+                      ? 'bg-red-700 text-white shadow-xs'
+                      : 'bg-white border border-red-200 text-red-800 hover:bg-red-50'
+                  }`}
+                >
+                  Switch to This Filter
+                </button>
+              </div>
+            </div>
+          )}
 
           {loading ? (
             <div className="py-12 text-center text-slate-400">
               <div className="w-8 h-8 border-3 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-              <span className="text-xs">Loading appointments...</span>
+              <span className="text-xs">Loading consultations...</span>
             </div>
-          ) : appointments.length === 0 ? (
+          ) : activeAppointments.length === 0 ? (
             <div className="glass-panel p-8 text-center text-slate-500">
               <CalendarIcon className="w-10 h-10 text-purple-300 mx-auto mb-2" />
-              <p className="text-sm font-bold text-slate-700">No scheduled appointments</p>
+              <p className="text-sm font-bold text-slate-700">No appointments found</p>
               <p className="text-xs text-slate-400 mt-1">
-                Patients can schedule prenatal reviews through Dr. Crane AI or via the Book button above.
+                Patients can schedule prenatal reviews through Dr. Crane AI or via the Book Consultation button above.
               </p>
             </div>
+          ) : statusCategory === 'scheduled' ? (
+            /* Single Category: Scheduled */
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  Scheduled Appointments ({scheduledAppts.length})
+                </h3>
+              </div>
+              {scheduledAppts.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-purple-50/40 border border-purple-100 text-center text-slate-500 text-xs">
+                  No active scheduled appointments at this time.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {scheduledAppts.map(renderAppointmentCard)}
+                </div>
+              )}
+            </div>
+          ) : statusCategory === 'rescheduled' ? (
+            /* Single Category: Rescheduled */
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
+                  <RotateCcw className="w-4 h-4 text-blue-600" />
+                  Rescheduled Appointments ({rescheduledAppts.length})
+                </h3>
+              </div>
+              {rescheduledAppts.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-blue-50/40 border border-blue-100 text-center text-slate-500 text-xs">
+                  No appointments have been rescheduled.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {rescheduledAppts.map(renderAppointmentCard)}
+                </div>
+              )}
+            </div>
+          ) : statusCategory === 'cancelled' ? (
+            /* Single Category: Cancelled */
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-red-900 flex items-center gap-1.5">
+                  <XCircle className="w-4 h-4 text-red-600" />
+                  Cancelled Appointments ({cancelledAppts.length})
+                </h3>
+              </div>
+              {cancelledAppts.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-red-50/40 border border-red-100 text-center text-slate-500 text-xs">
+                  No cancelled appointments.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {cancelledAppts.map(renderAppointmentCard)}
+                </div>
+              )}
+            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {appointments.map((appt) => {
-                const startDt = formatDateTime(appt.scheduled_start);
-                const endDt = formatDateTime(appt.scheduled_end);
-                const isPast = new Date(appt.scheduled_end) < new Date();
-                const isCancelled = appt.status === 'CANCELLED';
-
-                return (
-                  <div
-                    key={appt.id}
-                    className={`glass-panel p-5 relative overflow-hidden flex flex-col justify-between border ${
-                      isCancelled
-                        ? 'border-slate-200 bg-slate-50/50 opacity-70'
-                        : 'border-purple-200/90'
-                    }`}
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wide uppercase ${
-                            appt.status === 'CONFIRMED' || appt.status === 'SCHEDULED'
-                              ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                              : isCancelled
-                              ? 'bg-red-100 text-red-800 border border-red-200'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}
-                        >
-                          {appt.status}
-                        </span>
-
-                        <span className="text-[10px] font-semibold text-purple-700 flex items-center gap-1 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200/60">
-                          <Sparkles className="w-3 h-3 text-purple-600" />
-                          {appt.booked_via === 'AI_ASSISTANT' ? 'Booked via Dr. Crane AI' : 'Doctor Schedule Booking'}
-                        </span>
-                      </div>
-
-                      <div>
-                        <h3 className="text-base font-black text-purple-950 flex items-center gap-1.5">
-                          <User className="w-4 h-4 text-purple-700" />
-                          <span>{appt.doctor_name || 'Dr. Elena Vance, MD'}</span>
-                        </h3>
-                        {appt.patient_name && (
-                          <p className="text-xs font-semibold text-slate-600 mt-0.5">
-                            Patient: <span className="text-purple-900 font-bold">{appt.patient_name}</span>
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-purple-50/50 border border-purple-100 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <CalendarIcon className="w-4 h-4 text-purple-600 shrink-0" />
-                          <div>
-                            <p className="text-xs font-bold text-slate-800">{startDt.date}</p>
-                            <p className="text-[11px] text-purple-700 font-mono font-semibold">
-                              {startDt.time} &ndash; {endDt.time}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                          {appt.appointment_type.replace('_', ' ')}
-                        </span>
-                      </div>
-
-                      {appt.reason && (
-                        <p className="text-xs text-slate-600 leading-relaxed">
-                          <strong className="text-slate-800">Reason:</strong> {appt.reason}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    {!isCancelled && !isPast && (
-                      <div className="mt-4 pt-3 border-t border-purple-100 flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => setRescheduleModalAppt(appt)}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-purple-700 hover:bg-purple-100/70 text-xs font-bold transition-colors"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Reschedule</span>
-                        </button>
-                        <button
-                          onClick={() => setCancelModalAppt(appt)}
-                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          <span>Cancel</span>
-                        </button>
-                      </div>
-                    )}
+            /* "All" View: Divided into 3 Distinct Categories */
+            <div className="space-y-8">
+              {/* Category 1: Scheduled */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-purple-100">
+                  <h3 className="text-sm font-extrabold text-purple-950 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    <span>Scheduled Consultations</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                      {scheduledAppts.length}
+                    </span>
+                  </h3>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Upcoming confirmed visits
+                  </span>
+                </div>
+                {scheduledAppts.length === 0 ? (
+                  <div className="p-5 rounded-2xl bg-purple-50/40 border border-purple-100 text-center text-slate-500 text-xs">
+                    No active scheduled consultations.
                   </div>
-                );
-              })}
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {scheduledAppts.map(renderAppointmentCard)}
+                  </div>
+                )}
+              </div>
+
+              {/* Category 2: Rescheduled */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-blue-100">
+                  <h3 className="text-sm font-extrabold text-blue-950 flex items-center gap-2">
+                    <RotateCcw className="w-4 h-4 text-blue-600" />
+                    <span>Rescheduled Consultations</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                      {rescheduledAppts.length}
+                    </span>
+                  </h3>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Adjusted consultation dates & times
+                  </span>
+                </div>
+                {rescheduledAppts.length === 0 ? (
+                  <div className="p-5 rounded-2xl bg-blue-50/40 border border-blue-100 text-center text-slate-500 text-xs">
+                    No rescheduled consultations.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {rescheduledAppts.map(renderAppointmentCard)}
+                  </div>
+                )}
+              </div>
+
+              {/* Category 3: Cancelled */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-red-100">
+                  <h3 className="text-sm font-extrabold text-red-950 flex items-center gap-2">
+                    <XCircle className="w-4 h-4 text-red-600" />
+                    <span>Cancelled Consultations</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-100 text-red-800 border border-red-200">
+                      {cancelledAppts.length}
+                    </span>
+                  </h3>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Withdrawn or cancelled appointments
+                  </span>
+                </div>
+                {cancelledAppts.length === 0 ? (
+                  <div className="p-5 rounded-2xl bg-red-50/40 border border-red-100 text-center text-slate-500 text-xs">
+                    No cancelled consultations.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {cancelledAppts.map(renderAppointmentCard)}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -628,10 +1113,7 @@ export const AppointmentsView: React.FC = () => {
                 ) : (
                   <div className="grid grid-cols-3 gap-2 max-h-36 overflow-y-auto p-1">
                     {slots.map((s, idx) => {
-                      const timeStr = new Date(s.start_time).toLocaleTimeString(undefined, {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      });
+                      const timeStr = getSlotDisplayTime(s);
                       const isSelected = selectedSlot?.start_time === s.start_time;
 
                       return (
@@ -744,10 +1226,7 @@ export const AppointmentsView: React.FC = () => {
                 ) : (
                   <div className="grid grid-cols-3 gap-2 max-h-36 overflow-y-auto p-1">
                     {rescheduleSlots.map((s, idx) => {
-                      const timeStr = new Date(s.start_time).toLocaleTimeString(undefined, {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      });
+                      const timeStr = getSlotDisplayTime(s);
                       const isSelected = selectedRescheduleSlot?.start_time === s.start_time;
 
                       return (
@@ -804,32 +1283,66 @@ export const AppointmentsView: React.FC = () => {
       {/* Cancel Confirmation Modal */}
       {cancelModalAppt && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass-panel-elevated bg-white/95 max-w-sm w-full p-5 rounded-3xl border border-red-200 shadow-2xl space-y-3">
-            <h3 className="text-base font-black text-red-950">Cancel Appointment?</h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Are you sure you want to cancel this consultation with Dr. Vance?
+          <div className="glass-panel-elevated bg-white/95 max-w-md w-full p-6 rounded-3xl border border-red-200 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2 text-red-700">
+              <XCircle className="w-6 h-6 shrink-0" />
+              <h3 className="text-base font-black text-red-950">Cancel Consultation?</h3>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-red-50/70 border border-red-200 space-y-1.5 text-xs">
+              <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-purple-700" />
+                <span>{cancelModalAppt.doctor_name || 'Dr. Elena Vance, MD'}</span>
+                {cancelModalAppt.patient_name && (
+                  <span className="text-slate-500 font-normal">&bull; Patient: {cancelModalAppt.patient_name}</span>
+                )}
+              </p>
+              <p className="font-medium text-purple-950 flex items-center gap-1.5">
+                <CalendarIcon className="w-3.5 h-3.5 text-purple-600" />
+                <span>
+                  {formatDateTime(cancelModalAppt.scheduled_start || cancelModalAppt.start_time, cancelModalAppt.formatted_time, cancelModalAppt.formatted_date).date} &bull;{' '}
+                  {formatDateTime(cancelModalAppt.scheduled_start || cancelModalAppt.start_time, cancelModalAppt.formatted_time, cancelModalAppt.formatted_date).time}
+                </span>
+              </p>
+              {cancelModalAppt.reason && (
+                <p className="text-slate-600">
+                  <strong>Visit Reason:</strong> {cancelModalAppt.reason}
+                </p>
+              )}
+            </div>
+
+            <p className="text-[11px] text-slate-600 bg-amber-50/80 p-2.5 rounded-xl border border-amber-200 flex items-start gap-1.5">
+              <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>2-Minute Confirmation Window:</strong> Once cancelled, this appointment will remain displayed in your list for 2 minutes with an animated countdown badge before being automatically cleared from the schedule.
+              </span>
             </p>
+
             <form onSubmit={handleCancelSubmit} className="space-y-3 text-xs">
-              <input
-                type="text"
-                placeholder="Reason for cancellation (optional)"
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
-              />
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Reason for cancellation (optional):</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Schedule conflict, feeling better, need later date"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                />
+              </div>
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setCancelModalAppt(null)}
-                  className="px-3 py-1.5 rounded-xl text-slate-600 hover:bg-slate-100 font-bold"
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold"
                 >
                   Keep Appointment
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold"
+                  className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold flex items-center gap-1.5 shadow-xs transition-colors"
                 >
-                  Confirm Cancel
+                  <XCircle className="w-4 h-4" />
+                  <span>Confirm Cancellation</span>
                 </button>
               </div>
             </form>

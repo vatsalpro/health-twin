@@ -194,18 +194,6 @@ def get_order_dose_logs(
         for l in logs
     ]
 
-@router.get("/reference/{medication_name}")
-@router.get("/monographs/{medication_name}")
-def get_medication_reference(
-    medication_name: str,
-    current_user: User = Depends(get_current_user)
-):
-    """Retrieve approved clinical drug reference monograph."""
-    mono = medication_service.get_drug_monograph(medication_name)
-    if not mono:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No approved reference monograph found for this drug")
-    return mono
-
 @router.get("/monographs")
 def get_all_monographs(
     current_user: User = Depends(get_current_user)
@@ -213,6 +201,18 @@ def get_all_monographs(
     """Retrieve all evidence-based maternal drug monographs."""
     from app.services.medication_service import MATERNAL_DRUG_MONOGRAPHS
     return MATERNAL_DRUG_MONOGRAPHS
+
+@router.get("/reference/{medication_name}")
+@router.get("/monographs/{medication_name}")
+async def get_medication_reference(
+    medication_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Retrieve approved clinical drug reference monograph (verified library + local Ollama generation fallback)."""
+    mono = await medication_service.get_or_generate_drug_monograph(medication_name)
+    if not mono:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No approved reference monograph found for this drug")
+    return mono
 
 @router.get("/patient/{patient_id}/summary")
 def get_patient_medication_summary(

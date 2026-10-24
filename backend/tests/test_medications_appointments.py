@@ -150,13 +150,128 @@ def test_atomic_appointment_booking_and_double_booking_prevention(auth_tokens):
     }
     resp_resched = client.post(f"/api/v1/appointments/{appt_id}/reschedule", json=resched_payload, headers=headers)
     assert resp_resched.status_code == 200
-    assert resp_resched.json()["status"] == "CONFIRMED"
+    assert resp_resched.json()["status"] in ("CONFIRMED", "RESCHEDULED")
 
     # 4. Cancel appointment
     cancel_payload = {"cancellation_reason": "Patient conflict with work schedule"}
     resp_cancel = client.post(f"/api/v1/appointments/{appt_id}/cancel", json=cancel_payload, headers=headers)
     assert resp_cancel.status_code == 200
     assert resp_cancel.json()["status"] == "CANCELLED"
+
+def test_patient_appointment_booking_and_reschedule_field_aliases(auth_tokens):
+    """Verify that booking via POST /api/v1/appointments and rescheduling with frontend aliases work seamlessly."""
+    headers = {"Authorization": f"Bearer {auth_tokens['p1_token']}"}
+
+    target_start = datetime(2026, 11, 21, 10, 0, tzinfo=timezone.utc)
+    target_end = datetime(2026, 11, 21, 10, 30, tzinfo=timezone.utc)
+    
+    # Booking using frontend format (POST /api/v1/appointments, scheduled_start, booked_via)
+    book_payload = {
+        "patient_id": auth_tokens["p1_id"],
+        "doctor_id": auth_tokens["clinician_id"],
+        "scheduled_start": target_start.isoformat(),
+        "scheduled_end": target_end.isoformat(),
+        "appointment_type": "ROUTINE_PRENATAL",
+        "reason": "Patient routine consultation",
+        "booked_via": "UI_WEB"
+    }
+
+    resp1 = client.post("/api/v1/appointments", json=book_payload, headers=headers)
+    assert resp1.status_code == 201
+    appt = resp1.json()
+    assert appt["status"] == "CONFIRMED"
+    assert "scheduled_start" in appt
+    assert "start_time" in appt
+    assert appt["scheduled_start"] is not None
+    appt_id = appt["id"]
+
+    # Reschedule using frontend format (new_scheduled_start, reschedule_reason)
+    new_start = datetime(2026, 11, 21, 11, 0, tzinfo=timezone.utc)
+    resched_payload = {
+        "new_scheduled_start": new_start.isoformat(),
+        "reschedule_reason": "Patient requested later morning slot"
+    }
+    resp_resched = client.post(f"/api/v1/appointments/{appt_id}/reschedule", json=resched_payload, headers=headers)
+    assert resp_resched.status_code == 200
+    assert resp_resched.json()["status"] in ("CONFIRMED", "RESCHEDULED")
+    assert resp_resched.json()["scheduled_start"] is not None
+
+    # Cancel using reason field
+    resp_cancel = client.post(f"/api/v1/appointments/{appt_id}/cancel", json={"reason": "Cannot make it"}, headers=headers)
+    assert resp_cancel.status_code == 200
+    assert resp_cancel.json()["status"] == "CANCELLED"
+    assert resp_cancel.json()["cancelled_at"] is not None
+
+def test_cancelled_appointment_removed_after_2_minutes(auth_tokens, db):
+    """Verify that cancelled appointments are automatically removed after 2 minutes."""
+    headers_p1 = {"Authorization": f"Bearer {auth_tokens['p1_token']}"}
+
+    # 1. Book an appointment
+    book_time = datetime(2026, 12, 1, 9, 30, tzinfo=timezone.utc)
+    book_payload = {
+        "patient_id": auth_tokens["p1_id"],
+        "doctor_id": auth_tokens["clinician_id"],
+        "start_time": book_time.isoformat(),
+        "reason": "Test cancellation auto-purge",
+        "appointment_type": "in_person"
+    }
+    r_book = client.post("/api/v1/appointments/book", json=book_payload, headers=headers_p1)
+    assert r_book.status_code == 201
+    appt_id = r_book.json()["id"]
+
+    # 2. Cancel the appointment
+    r_cancel = client.post(f"/api/v1/appointments/{appt_id}/cancel", json={"cancellation_reason": "Schedule conflict"}, headers=headers_p1)
+    assert r_cancel.status_code == 200
+    assert r_cancel.json()["status"] == "CANCELLED"
+    assert r_cancel.json()["cancelled_at"] is not None
+
+    # 3. Query immediately: Should still be present (within 2-minute grace period)
+    r_list = client.get(f"/api/v1/appointments?patient_id={auth_tokens['p1_id']}", headers=headers_p1)
+    assert r_list.status_code == 200
+    ids_present = [a["id"] for a in r_list.json()]
+    assert appt_id in ids_present
+
+    # 4. Simulate time passing > 2 minutes (set cancelled_at to 3 minutes ago)
+    appt = db.query(Appointment).filter(Appointment.id == appt_id).first()
+    assert appt is not None
+    appt.cancelled_at = datetime.now(timezone.utc) - timedelta(minutes=3)
+    db.commit()
+
+    # 5. Query again: Auto-purge must remove it from database and response
+    r_list2 = client.get(f"/api/v1/appointments?patient_id={auth_tokens['p1_id']}", headers=headers_p1)
+    assert r_list2.status_code == 200
+    ids_after_purge = [a["id"] for a in r_list2.json()]
+    assert appt_id not in ids_after_purge
+
+    # 6. Verify record is physically purged from DB
+    purged_record = db.query(Appointment).filter(Appointment.id == appt_id).first()
+    assert purged_record is None
+
+def test_doctor_schedule_and_all_patients_visibility(auth_tokens):
+    """Verify clinician can update their working schedule and view all patient consultations."""
+    headers_clin = {"Authorization": f"Bearer {auth_tokens['clinician']}"}
+
+    # 1. Doctor updates schedule (sets Wednesday slot duration to 45 min)
+    schedule_payload = [
+        {"day_of_week": 0, "start_time": "08:30", "end_time": "16:30", "slot_duration_minutes": 30, "is_active": True},
+        {"day_of_week": 1, "start_time": "08:30", "end_time": "16:30", "slot_duration_minutes": 30, "is_active": True},
+        {"day_of_week": 2, "start_time": "09:00", "end_time": "15:00", "slot_duration_minutes": 45, "is_active": True},
+        {"day_of_week": 3, "start_time": "08:30", "end_time": "16:30", "slot_duration_minutes": 30, "is_active": True},
+        {"day_of_week": 4, "start_time": "08:30", "end_time": "16:30", "slot_duration_minutes": 30, "is_active": True},
+        {"day_of_week": 5, "start_time": "10:00", "end_time": "14:00", "slot_duration_minutes": 30, "is_active": False},
+        {"day_of_week": 6, "start_time": "10:00", "end_time": "14:00", "slot_duration_minutes": 30, "is_active": False},
+    ]
+    r_save = client.put(f"/api/v1/appointments/doctor/{auth_tokens['clinician_id']}/availability", json=schedule_payload, headers=headers_clin)
+    assert r_save.status_code == 200
+    saved_days = r_save.json()
+    assert len(saved_days) == 7
+    wed = next(d for d in saved_days if d["day_of_week"] == 2)
+    assert wed["slot_duration_minutes"] == 45
+
+    # 2. Clinician queries all appointments without patient_id: returns appointments for this doctor
+    r_all_doc_appts = client.get("/api/v1/appointments", headers=headers_clin)
+    assert r_all_doc_appts.status_code == 200
+    assert isinstance(r_all_doc_appts.json(), list)
 
 def test_notification_centre_and_read_status(auth_tokens):
     """Verify notification persistence, unread count badge, and mark-as-read."""

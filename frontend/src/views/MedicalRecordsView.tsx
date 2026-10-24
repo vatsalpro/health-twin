@@ -39,17 +39,20 @@ export const MedicalRecordsView: React.FC = () => {
     if (!selectedPatientId) return;
     setLoading(true);
     try {
-      const patient = await api.getPatient(selectedPatientId);
-      const timeline = await api.getPatientTimeline(selectedPatientId);
-      const docIds = timeline.events
-        .filter((e) => e.type === 'DOCUMENT_UPLOAD')
-        .map((e) => e.id);
-
-      const uniqueDocIds = Array.from(new Set(docIds));
-      const docDetails = await Promise.all(
-        uniqueDocIds.map((id) => api.getDocument(id).catch(() => null))
-      );
-      setDocuments(docDetails.filter((d): d is MedicalDocument => d !== null));
+      let docDetails: MedicalDocument[] = [];
+      try {
+        docDetails = await api.getPatientDocuments(selectedPatientId);
+      } catch {
+        const timeline = await api.getPatientTimeline(selectedPatientId);
+        const docIds = timeline.events
+          .filter((e) => e.type === 'DOCUMENT_UPLOAD')
+          .map((e) => e.id);
+        const uniqueDocIds = Array.from(new Set(docIds));
+        docDetails = (await Promise.all(
+          uniqueDocIds.map((id) => api.getDocument(id).catch(() => null))
+        )).filter((d): d is MedicalDocument => d !== null);
+      }
+      setDocuments(docDetails);
     } catch (err) {
       console.error('Failed to load documents:', err);
     } finally {

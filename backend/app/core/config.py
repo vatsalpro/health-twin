@@ -52,7 +52,7 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     
     # Persistence
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./pregtwin.db")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(_backend_dir, 'pregtwin.db').replace(chr(92), '/')}")
     STORAGE_BACKEND: str = os.getenv("STORAGE_BACKEND", "local")
     STORAGE_PATH: str = os.getenv("STORAGE_PATH", "./storage/documents")
     

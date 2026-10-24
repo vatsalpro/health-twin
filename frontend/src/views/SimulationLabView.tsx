@@ -135,32 +135,119 @@ export const SimulationLabView: React.FC = () => {
   const [postpartumDbp, setPostpartumDbp] = useState<number>(86);
   const [postpartumSymptoms, setPostpartumSymptoms] = useState<string[]>([]);
 
-  // Validation Checks (Never silently mutate user entries)
-  const validationErrors = useMemo(() => {
-    const errors: string[] = [];
-    if (activeCategory === 'cardiovascular' || activeCategory === 'preeclampsia_risk') {
-      if (sbp <= dbp) {
-        errors.push(`Systolic blood pressure (${sbp} mmHg) must be strictly greater than diastolic blood pressure (${dbp} mmHg).`);
-      }
-      if (sbp < 70 || sbp > 240) {
-        errors.push(`Systolic BP (${sbp} mmHg) outside physiological safety window (70–240 mmHg).`);
-      }
-      if (dbp < 40 || dbp > 160) {
-        errors.push(`Diastolic BP (${dbp} mmHg) outside physiological safety window (40–160 mmHg).`);
-      }
+  // Active Patient Baseline Anchor
+  const patientBaselineGA = useMemo(() => {
+    return (
+      selectedPatient?.episodes?.[0]?.current_gestational_age_weeks ??
+      twin?.gestational_age_weeks ??
+      31.4
+    );
+  }, [selectedPatient, twin]);
+
+  const patientBaselineSbp = useMemo(() => {
+    return twin?.sbp ?? (useHypotheticalBaseline ? 120 : 120);
+  }, [twin, useHypotheticalBaseline]);
+
+  const patientBaselineDbp = useMemo(() => {
+    return twin?.dbp ?? (useHypotheticalBaseline ? 80 : 80);
+  }, [twin, useHypotheticalBaseline]);
+
+  const patientBaselineHr = 72;
+
+  // Effective Simulated Telemetry for 3D Twin & Visual Metrics
+  const { effectiveGA, effectiveSbp, effectiveDbp, effectiveMap, effectivePp } = useMemo(() => {
+    let gaVal = patientBaselineGA;
+    let sbpVal = sbp;
+    let dbpVal = dbp;
+
+    if (activeCategory === 'cardiovascular') {
+      gaVal = patientBaselineGA;
+      sbpVal = sbp;
+      dbpVal = dbp;
+    } else if (activeCategory === 'preeclampsia_risk') {
+      gaVal = ga;
+      sbpVal = sbp;
+      dbpVal = dbp;
+    } else if (activeCategory === 'gestational_timeline') {
+      gaVal = targetGa;
+      // Deterministic hemodynamic projection at target gestational age
+      const weeksDelta = Math.max(0, targetGa - patientBaselineGA);
+      sbpVal = Math.round(patientBaselineSbp + sbpSlope * weeksDelta);
+      dbpVal = Math.round(patientBaselineDbp + dbpSlope * weeksDelta);
+    } else if (activeCategory === 'postpartum') {
+      gaVal = 40.0; // Postpartum reference anatomical state
+      sbpVal = postpartumSbp;
+      dbpVal = postpartumDbp;
+    } else {
+      // metabolic_health, sleep_stress, sensor_reliability, monitoring_schedule
+      gaVal = patientBaselineGA;
+      sbpVal = patientBaselineSbp;
+      dbpVal = patientBaselineDbp;
     }
-    if (activeCategory === 'postpartum') {
-      if (postpartumSbp <= postpartumDbp) {
-        errors.push(`Postpartum systolic BP (${postpartumSbp} mmHg) must be strictly greater than diastolic BP (${postpartumDbp} mmHg).`);
+
+    const mapVal = Math.round((dbpVal + (sbpVal - dbpVal) / 3) * 10) / 10;
+    const ppVal = Math.round(sbpVal - dbpVal);
+
+    return {
+      effectiveGA: gaVal,
+      effectiveSbp: sbpVal,
+      effectiveDbp: dbpVal,
+      effectiveMap: mapVal,
+      effectivePp: ppVal,
+    };
+  }, [
+    activeCategory,
+    patientBaselineGA,
+    patientBaselineSbp,
+    patientBaselineDbp,
+    ga,
+    sbp,
+    dbp,
+    targetGa,
+    sbpSlope,
+    dbpSlope,
+    postpartumSbp,
+    postpartumDbp,
+  ]);
+
+  // Category-specific Validation Checks (Never silently mutate user entries)
+  const getValidationErrorsForCategory = useCallback(
+    (cat: SimulationCategory): string[] => {
+      const errors: string[] = [];
+      if (cat === 'cardiovascular' || cat === 'preeclampsia_risk') {
+        if (sbp <= dbp) {
+          errors.push(`Systolic blood pressure (${sbp} mmHg) must be strictly greater than diastolic blood pressure (${dbp} mmHg).`);
+        }
+        if (sbp < 70 || sbp > 240) {
+          errors.push(`Systolic BP (${sbp} mmHg) outside physiological safety window (70–240 mmHg).`);
+        }
+        if (dbp < 40 || dbp > 160) {
+          errors.push(`Diastolic BP (${dbp} mmHg) outside physiological safety window (40–160 mmHg).`);
+        }
+      } else if (cat === 'postpartum') {
+        if (postpartumSbp <= postpartumDbp) {
+          errors.push(`Postpartum systolic BP (${postpartumSbp} mmHg) must be strictly greater than diastolic BP (${postpartumDbp} mmHg).`);
+        }
+        if (postpartumSbp < 70 || postpartumSbp > 240) {
+          errors.push(`Postpartum systolic BP (${postpartumSbp} mmHg) outside safety window (70–240 mmHg).`);
+        }
+        if (postpartumDbp < 40 || postpartumDbp > 160) {
+          errors.push(`Postpartum diastolic BP (${postpartumDbp} mmHg) outside safety window (40–160 mmHg).`);
+        }
+      } else if (cat === 'gestational_timeline') {
+        if (targetGa <= patientBaselineGA) {
+          errors.push(`Target gestational age (${targetGa} wks) must be greater than current week (${patientBaselineGA.toFixed(1)} wks).`);
+        }
       }
-    }
-    if (activeCategory === 'gestational_timeline') {
-      if (targetGa <= ga) {
-        errors.push(`Target gestational age (${targetGa} wks) must be greater than current week (${ga} wks).`);
-      }
-    }
-    return errors;
-  }, [activeCategory, sbp, dbp, postpartumSbp, postpartumDbp, targetGa, ga]);
+      return errors;
+    },
+    [sbp, dbp, postpartumSbp, postpartumDbp, targetGa, patientBaselineGA]
+  );
+
+  const validationErrors = useMemo(
+    () => getValidationErrorsForCategory(activeCategory),
+    [getValidationErrorsForCategory, activeCategory]
+  );
 
   const isValidInput = validationErrors.length === 0;
 
@@ -168,9 +255,10 @@ export const SimulationLabView: React.FC = () => {
   const executeSimulation = useCallback(async (cat: SimulationCategory, customPayload?: any) => {
     if (!selectedPatientId) return;
 
-    // Reject run if input violates physiological rules
-    if (!customPayload && !isValidInput) {
-      setSimulationError(validationErrors[0]);
+    // Check validation specifically for the category being simulated
+    const catErrors = getValidationErrorsForCategory(cat);
+    if (!customPayload && catErrors.length > 0) {
+      setSimulationError(catErrors[0]);
       return;
     }
 
@@ -186,9 +274,9 @@ export const SimulationLabView: React.FC = () => {
         category: 'cardiovascular',
         sbp,
         dbp,
-        baseline_sbp: twin?.sbp || (useHypotheticalBaseline ? 120 : undefined),
-        baseline_dbp: twin?.dbp || (useHypotheticalBaseline ? 80 : undefined),
-        baseline_hr: 72,
+        baseline_sbp: patientBaselineSbp,
+        baseline_dbp: patientBaselineDbp,
+        baseline_hr: patientBaselineHr,
         heart_rate: heartRate,
         frequency_per_day: bpFreq,
         variability_sigma: variabilitySigma,
@@ -210,10 +298,10 @@ export const SimulationLabView: React.FC = () => {
     } else if (cat === 'gestational_timeline') {
       payload = {
         category: 'gestational_timeline',
-        current_ga_weeks: ga,
+        current_ga_weeks: patientBaselineGA,
         target_ga_weeks: targetGa,
-        baseline_sbp: twin?.sbp || 120,
-        baseline_dbp: twin?.dbp || 80,
+        baseline_sbp: patientBaselineSbp,
+        baseline_dbp: patientBaselineDbp,
         sbp_slope: sbpSlope,
         dbp_slope: dbpSlope,
       };
@@ -273,11 +361,13 @@ export const SimulationLabView: React.FC = () => {
     }
   }, [
     selectedPatientId,
-    isValidInput,
-    validationErrors,
+    getValidationErrorsForCategory,
     sbp,
     dbp,
-    twin,
+    patientBaselineSbp,
+    patientBaselineDbp,
+    patientBaselineHr,
+    patientBaselineGA,
     useHypotheticalBaseline,
     heartRate,
     bpFreq,
@@ -343,9 +433,13 @@ export const SimulationLabView: React.FC = () => {
         setDbp(80);
       }
 
-      if (twinData.gestational_age_weeks) {
-        setGa(twinData.gestational_age_weeks);
-      }
+      const activeGA =
+        selectedPatient?.episodes?.[0]?.current_gestational_age_weeks ??
+        twinData.gestational_age_weeks ??
+        31.4;
+      setGa(activeGA);
+      setTargetGa(Math.min(41, Math.max(Math.ceil(activeGA) + 1, 38.0)));
+
       if (twinData.proteinuria_dipstick) {
         setProteinDipstick(twinData.proteinuria_dipstick);
       }
@@ -361,7 +455,7 @@ export const SimulationLabView: React.FC = () => {
     } catch (err) {
       console.error('Failed to load baseline for simulation:', err);
     }
-  }, [selectedPatientId, activeCategory, executeSimulation]);
+  }, [selectedPatientId, selectedPatient, activeCategory, executeSimulation]);
 
   useEffect(() => {
     loadBaseline();
@@ -369,13 +463,10 @@ export const SimulationLabView: React.FC = () => {
 
   // Reset to verified patient baseline
   const handleResetToBaseline = () => {
-    if (twin?.sbp && twin?.dbp) {
-      setSbp(twin.sbp);
-      setDbp(twin.dbp);
-    }
-    if (twin?.gestational_age_weeks) {
-      setGa(twin.gestational_age_weeks);
-    }
+    setSbp(patientBaselineSbp);
+    setDbp(patientBaselineDbp);
+    setGa(patientBaselineGA);
+    setTargetGa(Math.min(41, Math.max(Math.ceil(patientBaselineGA) + 1, 38.0)));
     setUseHypotheticalBaseline(false);
     executeSimulation(activeCategory);
   };
@@ -553,6 +644,7 @@ export const SimulationLabView: React.FC = () => {
                     key={cat.id}
                     onClick={() => {
                       setActiveCategory(cat.id);
+                      setSimulationError(null);
                       executeSimulation(cat.id);
                     }}
                     className={`w-full text-left p-2.5 rounded-xl text-xs font-medium transition-all flex items-start gap-2.5 ${
@@ -655,52 +747,524 @@ export const SimulationLabView: React.FC = () => {
 
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-3 text-center">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-[10px] uppercase font-semibold text-slate-500 block">Simulated Risk</span>
-                  <p className="text-2xl font-extrabold font-mono text-slate-900 mt-0.5">
-                    {simulationResult ? `${(simulationResult.simulated_risk_score * 100).toFixed(1)}%` : '—'}
-                  </p>
-                  {simulationResult && (
-                    <span className={`text-[10px] font-semibold ${simulationResult.delta_risk_score > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                      {simulationResult.delta_risk_score > 0 ? '+' : ''}{(simulationResult.delta_risk_score * 100).toFixed(1)}% vs baseline
-                    </span>
-                  )}
-                </div>
+                {activeCategory === 'cardiovascular' && (
+                  <>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">MAP / Pulse Pres.</span>
+                      <p className="text-xl font-bold font-mono text-slate-900 mt-0.5">
+                        {effectiveMap.toFixed(1)} / {effectivePp} <span className="text-xs font-normal text-slate-500">mmHg</span>
+                      </p>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        Pulse Pres: {effectivePp} mmHg
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Myocardial Workload</span>
+                      <p className="text-xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        {Math.round((sbp * heartRate) / 100)} <span className="text-xs font-normal text-slate-500">RPP</span>
+                      </p>
+                      <span className="text-[10px] text-sky-700 font-semibold block mt-0.5">
+                        HR: {heartRate} bpm
+                      </span>
+                    </div>
+                  </>
+                )}
 
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-[10px] uppercase font-semibold text-slate-500 block">MAP / Pulse Pres.</span>
-                  <p className="text-lg font-bold font-mono text-slate-900 mt-1">
-                    {activeCategory === 'cardiovascular' || activeCategory === 'preeclampsia_risk'
-                      ? `${(dbp + (sbp - dbp) / 3).toFixed(1)} / ${(sbp - dbp)}`
-                      : '—'}
-                  </p>
-                  <span className="text-[10px] text-slate-500">mmHg (Calculated)</span>
-                </div>
+                {activeCategory === 'preeclampsia_risk' && (
+                  <>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Simulated Risk</span>
+                      <p className="text-2xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        {simulationResult ? `${(simulationResult.simulated_risk_score * 100).toFixed(1)}%` : '—'}
+                      </p>
+                      {simulationResult && (
+                        <span className={`text-[10px] font-semibold ${simulationResult.delta_risk_score > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          {simulationResult.delta_risk_score > 0 ? '+' : ''}{(simulationResult.delta_risk_score * 100).toFixed(1)}% vs baseline
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">MAP / Pulse Pres.</span>
+                      <p className="text-xl font-bold font-mono text-slate-900 mt-0.5">
+                        {effectiveMap.toFixed(1)} / {effectivePp} <span className="text-xs font-normal text-slate-500">mmHg</span>
+                      </p>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        GA: {ga.toFixed(1)}w • Dipstick: {proteinDipstick}
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {activeCategory === 'gestational_timeline' && (
+                  <>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Target Horizon</span>
+                      <p className="text-2xl font-extrabold font-mono text-sky-900 mt-0.5">
+                        {targetGa.toFixed(1)} <span className="text-xs font-normal text-slate-500">wks</span>
+                      </p>
+                      <span className="text-[10px] text-sky-700 font-semibold block mt-0.5">
+                        +{Math.max(0, targetGa - patientBaselineGA).toFixed(1)}w trajectory
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Projected Hemodynamics</span>
+                      <p className="text-xl font-bold font-mono text-slate-900 mt-0.5">
+                        {effectiveSbp}/{effectiveDbp} <span className="text-xs font-normal text-slate-500">mmHg</span>
+                      </p>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        Slope: +{sbpSlope}/+{dbpSlope} mmHg/wk
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {activeCategory === 'metabolic_health' && (
+                  <>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Fasting Glycemia</span>
+                      <p className="text-2xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        {fastingGlucose} <span className="text-xs font-normal text-slate-500">{glucoseUnit}</span>
+                      </p>
+                      <span className={`text-[10px] font-semibold ${fastingGlucose < 95 ? 'text-emerald-600' : fastingGlucose < 105 ? 'text-amber-600' : 'text-rose-600'}`}>
+                        {fastingGlucose < 95 ? 'Normal Target' : fastingGlucose < 105 ? 'Borderline' : 'Elevated'}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Postprandial Excursion</span>
+                      <p className="text-2xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        +{postMealGlucose - fastingGlucose} <span className="text-xs font-normal text-slate-500">{glucoseUnit}</span>
+                      </p>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        Post-meal: {postMealGlucose} {glucoseUnit}
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {activeCategory === 'sleep_stress' && (
+                  <>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Sleep Adequacy</span>
+                      <p className="text-2xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        {sleepHours} <span className="text-xs font-normal text-slate-500">hrs</span>
+                      </p>
+                      <span className="text-[10px] text-sky-700 font-semibold block mt-0.5">
+                        Regularity: {sleepRegIdx}% • Steps: {dailySteps}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Autonomic Tone (HRV)</span>
+                      <p className="text-2xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        {hrvRmssd} <span className="text-xs font-normal text-slate-500">ms</span>
+                      </p>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        Stress Index: {stressScale}/10
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {activeCategory === 'sensor_reliability' && (
+                  <>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Telemetry Quality</span>
+                      <p className="text-2xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        {simulationResult?.detailed_results?.impact_metrics?.trend_reliability_score !== undefined
+                          ? `${simulationResult.detailed_results.impact_metrics.trend_reliability_score}%`
+                          : `${Math.max(5, 100 - missingPacketRate * 1.5).toFixed(0)}%`}
+                      </p>
+                      <span className={`text-[10px] font-semibold ${
+                        (simulationResult?.detailed_results?.impact_metrics?.reliability_category === 'UNRELIABLE_DEGRADED' || missingPacketRate > 20)
+                          ? 'text-rose-600'
+                          : (simulationResult?.detailed_results?.impact_metrics?.reliability_category === 'ACCEPTABLE' || missingPacketRate > 8)
+                          ? 'text-amber-600'
+                          : 'text-emerald-600'
+                      }`}>
+                        {simulationResult?.detailed_results?.impact_metrics?.reliability_category?.replace('_', ' ') || 'ACTIVE STREAM'}
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Data Completeness</span>
+                      <p className="text-2xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        {simulationResult?.detailed_results?.impact_metrics?.effective_completeness_pct !== undefined
+                          ? `${simulationResult.detailed_results.impact_metrics.effective_completeness_pct}%`
+                          : `${Math.max(0, 100 - missingPacketRate)}%`}
+                      </p>
+                      <span className="text-[10px] text-slate-500">
+                        Loss: {missingPacketRate}% • Latency: {delayMinutes}m
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {activeCategory === 'monitoring_schedule' && (
+                  <>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Monitoring Cadence</span>
+                      <p className="text-xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        {simulationResult?.detailed_results?.protocol_details?.readings_per_day ?? 1}x <span className="text-xs font-normal text-slate-500">/ day</span>
+                      </p>
+                      <span className="text-[10px] text-sky-700 font-semibold block mt-0.5">
+                        {simulationResult?.detailed_results?.protocol_details?.name ?? 'Standard Cuff'}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Telemetry Coverage</span>
+                      <p className="text-2xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        {simulationResult?.detailed_results?.protocol_details?.coverage_pct ?? 35}%
+                      </p>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        Detection Latency: ~{simulationResult?.detailed_results?.protocol_details?.detection_delay_hours ?? 18}h
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {activeCategory === 'postpartum' && (
+                  <>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Postpartum Horizon</span>
+                      <p className="text-2xl font-extrabold font-mono text-slate-900 mt-0.5">
+                        Day {postpartumDay}
+                      </p>
+                      <span className="text-[10px] text-sky-700 font-semibold block mt-0.5 uppercase">
+                        {deliveryType} delivery
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[10px] uppercase font-semibold text-slate-500 block">Hemodynamics</span>
+                      <p className="text-xl font-bold font-mono text-slate-900 mt-0.5">
+                        {postpartumSbp}/{postpartumDbp} <span className="text-xs font-normal text-slate-500">mmHg</span>
+                      </p>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        MAP: {(postpartumDbp + (postpartumSbp - postpartumDbp) / 3).toFixed(1)} mmHg
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* 3D Anatomical Twin Canvas */}
               <div className="h-64 w-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden relative">
                 <MaternalTwin3D
-                  gestationalAgeWeeks={ga}
-                  sbp={sbp}
-                  dbp={dbp}
+                  gestationalAgeWeeks={effectiveGA}
+                  sbp={effectiveSbp}
+                  dbp={effectiveDbp}
                   riskCategory={simulationResult?.simulated_risk_category as any || 'LOW'}
                   isSimulated={true}
                   className="w-full h-full"
                 />
               </div>
 
-              {/* Formula & Explainability Box */}
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
-                <span className="font-semibold text-slate-800 flex items-center gap-1.5 text-[11px]">
-                  <Info className="w-3.5 h-3.5 text-sky-600" />
-                  Deterministic Physiological Math
-                </span>
-                <p className="text-[11px] leading-relaxed text-slate-600">
-                  MAP = DBP + ⅓(SBP - DBP). Rate Pressure Product (RPP) = (SBP × HR)/100.
-                  Temporal demarcation enforces chronic vs gestational criteria at the 20-week boundary.
-                </p>
-              </div>
+              {/* A. CARDIOVASCULAR DETAILS */}
+              {activeCategory === 'cardiovascular' && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+                      <Heart className="w-4 h-4 text-rose-600" />
+                      Hemodynamic Indices & Vascular Compliance
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      sbp >= 160 || dbp >= 110 ? 'bg-rose-100 text-rose-800' : sbp >= 140 || dbp >= 90 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {sbp >= 160 || dbp >= 110 ? 'SEVERE HTN' : sbp >= 140 || dbp >= 90 ? 'STAGE 1 HTN' : 'NORMOTENSIVE'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">RPP Index</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{Math.round((sbp * heartRate) / 100)}</p>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Pulse Pressure</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{sbp - dbp} mmHg</p>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Mean Arterial</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{effectiveMap.toFixed(1)} mmHg</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-slate-600">
+                    MAP = DBP + ⅓(SBP - DBP). Rate Pressure Product (RPP) models myocardial oxygen demand.
+                  </p>
+                </div>
+              )}
+
+              {/* B. PREECLAMPSIA RISK DETAILS */}
+              {activeCategory === 'preeclampsia_risk' && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+                      <TrendingUp className="w-4 h-4 text-amber-600" />
+                      Multivariate Risk Markers & SHAP Weights
+                    </span>
+                    {simulationResult?.uncertainty_interval && (
+                      <span className="text-[10px] font-mono text-slate-500">
+                        95% CI: [{(((simulationResult.uncertainty_interval as any).lower ?? (simulationResult.uncertainty_interval as any).lower_bound_95ci ?? 0) * 100).toFixed(1)}% – {(((simulationResult.uncertainty_interval as any).upper ?? (simulationResult.uncertainty_interval as any).upper_bound_95ci ?? 0) * 100).toFixed(1)}%]
+                      </span>
+                    )}
+                  </div>
+                  {simulationResult?.feature_contributions && simulationResult.feature_contributions.length > 0 ? (
+                    <div className="space-y-1.5 pt-1">
+                      {simulationResult.feature_contributions.slice(0, 4).map((f, i) => (
+                        <div key={i} className="flex items-center justify-between p-1.5 bg-white rounded-lg border border-slate-100 text-[11px]">
+                          <span className="text-slate-700 font-medium">{f.feature_label}</span>
+                          <span className={`font-mono font-bold ${f.direction === 'increases_risk' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                            {f.direction === 'increases_risk' ? '+' : ''}{f.contribution.toFixed(1)} pts
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-600">Multi-marker risk model evaluation anchored to current clinical visit evidence.</p>
+                  )}
+                </div>
+              )}
+
+              {/* C. GESTATIONAL TIMELINE DETAILS */}
+              {activeCategory === 'gestational_timeline' && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+                      <Clock className="w-4 h-4 text-sky-600" />
+                      Longitudinal Trimester Trajectory Steps
+                    </span>
+                    <span className="text-[10px] text-sky-700 font-semibold">
+                      Anchor: {patientBaselineGA.toFixed(1)}w → Target: {targetGa.toFixed(1)}w
+                    </span>
+                  </div>
+                  {simulationResult?.detailed_results?.timeline && simulationResult.detailed_results.timeline.length > 0 ? (
+                    <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                      {simulationResult.detailed_results.timeline.map((step: any, idx: number) => (
+                        <div key={idx} className={`flex items-center justify-between p-1.5 rounded-lg border text-[11px] ${
+                          step.source === 'CURRENT_OBSERVED' ? 'bg-sky-50/70 border-sky-200 font-semibold' : 'bg-white border-slate-100'
+                        }`}>
+                          <span className="font-mono text-slate-800">{step.gestational_age_weeks.toFixed(1)}w</span>
+                          <span className="font-mono text-slate-700">{step.sbp}/{step.dbp} mmHg</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            step.source === 'CURRENT_OBSERVED' ? 'bg-sky-200/60 text-sky-900' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {step.source === 'CURRENT_OBSERVED' ? 'Current Anchor' : 'Simulated Future'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-600">Linear slope extrapolation based on patient baseline vitals.</p>
+                  )}
+                </div>
+              )}
+
+              {/* D. METABOLIC HEALTH DETAILS */}
+              {activeCategory === 'metabolic_health' && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+                      <Apple className="w-4 h-4 text-emerald-600" />
+                      ACOG Glycemia & GDM Threshold Comparison
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      fastingGlucose >= 105 || postMealGlucose >= 160 ? 'bg-rose-100 text-rose-800' : fastingGlucose >= 95 || postMealGlucose >= 140 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {fastingGlucose >= 105 || postMealGlucose >= 160 ? 'GDM SCREENING POSITIVE' : fastingGlucose >= 95 || postMealGlucose >= 140 ? 'BORDERLINE EXCURSION' : 'TARGET GLYCEMIA'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 block font-semibold uppercase">Fasting Target (&lt;95)</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{fastingGlucose} {glucoseUnit}</p>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 block font-semibold uppercase">Postprandial Target (&lt;140)</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{postMealGlucose} {glucoseUnit}</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-slate-600">
+                    Excursion is +{postMealGlucose - fastingGlucose} {glucoseUnit}. Fasting &gt;=95 or 1-hr &gt;=140 warrants a confirmatory diagnostic 3-hour oral glucose tolerance test (OGTT).
+                  </p>
+                </div>
+              )}
+
+              {/* E. SLEEP & STRESS DETAILS */}
+              {activeCategory === 'sleep_stress' && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+                      <Moon className="w-4 h-4 text-purple-600" />
+                      Autonomic Tone & Nocturnal Dipping Analysis
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      stressScale >= 7 || sleepHours < 6 ? 'bg-rose-100 text-rose-800' : stressScale >= 5 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {stressScale >= 7 || sleepHours < 6 ? 'SYMPATHETIC DOMINANCE' : 'BALANCED TONE'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">HRV rMSSD</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{hrvRmssd} ms</p>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Sleep Regularity</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{sleepRegIdx}%</p>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Dipping Pattern</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{sleepHours >= 7 ? 'Normal' : 'Non-dipper'}</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-slate-600">
+                    Non-dipping nocturnal blood pressure and depressed HRV correlate with vascular endothelial strain and gestational hypertension.
+                  </p>
+                </div>
+              )}
+
+              {/* F. SENSOR NOISE & PACKET LOSS DETAILS */}
+              {activeCategory === 'sensor_reliability' && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+                      <Radio className="w-4 h-4 text-sky-600 animate-pulse" />
+                      Ambulatory Telemetry Degradation Pipeline
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      missingPacketRate > 20
+                        ? 'bg-rose-100 text-rose-800'
+                        : missingPacketRate > 8
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {missingPacketRate > 20 ? 'HIGH LOSS' : missingPacketRate > 8 ? 'MODERATE LOSS' : 'OPTIMAL STREAM'}
+                    </span>
+                  </div>
+
+                  {/* Packet Retention Progress Bar */}
+                  <div>
+                    <div className="flex justify-between text-[11px] mb-1 font-medium text-slate-600">
+                      <span>Packet Delivery: {(100 - missingPacketRate).toFixed(0)}%</span>
+                      <span className="text-rose-600">Dropped: {missingPacketRate}%</span>
+                    </div>
+                    <div className="h-2.5 w-full bg-slate-200 rounded-full overflow-hidden flex">
+                      <div
+                        className="bg-emerald-500 transition-all duration-300"
+                        style={{ width: `${Math.max(0, 100 - missingPacketRate)}%` }}
+                        title={`Retained packets: ${100 - missingPacketRate}%`}
+                      />
+                      <div
+                        className="bg-rose-500 transition-all duration-300"
+                        style={{ width: `${missingPacketRate}%` }}
+                        title={`Dropped packets: ${missingPacketRate}%`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Latency & Noise Metrics */}
+                  <div className="grid grid-cols-3 gap-2 text-center pt-1 border-t border-slate-200/80">
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Noise Jitter</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">±{noiseSigma} mmHg</p>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Sync Buffer</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{delayMinutes} min</p>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Disconnect</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{disconnectHours}h</p>
+                    </div>
+                  </div>
+
+                  {/* Clinical Detection Notice */}
+                  {(simulationResult?.detailed_results?.impact_metrics?.risk_of_undetected_spikes === 'HIGH' || missingPacketRate > 20 || delayMinutes > 40) ? (
+                    <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-[11px] text-rose-900">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        <span>High Clinical Blindspot Risk</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-rose-700">
+                        Severe packet dropout ({missingPacketRate}%) and transmission latency ({delayMinutes} min) introduce critical blindspots. Acute hypertensive surges (SBP ≥ 160) could occur between telemetry syncs without triggering real-time clinical alerts.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-[11px] text-emerald-900">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>Adequate Telemetry Integrity</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-emerald-700">
+                        Packet delivery ({100 - missingPacketRate}%) and low signal noise (±{noiseSigma}σ) maintain dependable confidence intervals for algorithmic preeclampsia screening.
+                      </p>
+                    </div>
+                  )}
+
+                  {simulationResult?.detailed_results?.research_implication && (
+                    <p className="text-[10px] text-slate-500 italic border-t border-slate-200/60 pt-1.5">
+                      {simulationResult.detailed_results.research_implication}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* G. MONITORING SCHEDULE DETAILS */}
+              {activeCategory === 'monitoring_schedule' && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+                      <Calendar className="w-4 h-4 text-sky-600" />
+                      HBPM Cadence & Detection Latency Trade-Off
+                    </span>
+                    <span className="text-[10px] text-sky-700 font-semibold">
+                      Horizon: {monitoringDays} Days
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Expected Readings</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{simulationResult?.detailed_results?.projected_totals?.expected_readings ?? 28}</p>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Retained Readings</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">{simulationResult?.detailed_results?.projected_totals?.retained_readings ?? 25}</p>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">Detection Delay</span>
+                      <p className="font-mono font-bold text-slate-800 text-xs mt-0.5">~{simulationResult?.detailed_results?.protocol_details?.detection_delay_hours ?? 18}h</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-slate-600">
+                    Higher frequency monitoring accelerates detection of accelerating blood pressure trajectories while balancing patient burden.
+                  </p>
+                </div>
+              )}
+
+              {/* H. POSTPARTUM DETAILS */}
+              {activeCategory === 'postpartum' && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+                      <Baby className="w-4 h-4 text-rose-600" />
+                      Postpartum Rebound Curve & Vigilance Window
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      postpartumDay >= 3 && postpartumDay <= 6 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+                    }`}>
+                      {postpartumDay >= 3 && postpartumDay <= 6 ? 'PEAK RISK WINDOW (DAYS 3–6)' : `DAY ${postpartumDay}`}
+                    </span>
+                  </div>
+                  <div className="p-2.5 bg-white rounded-lg border border-slate-100 space-y-1 text-[11px]">
+                    <div className="flex justify-between font-medium">
+                      <span className="text-slate-700">Clinical Vigilance Status:</span>
+                      <span className={`font-bold ${postpartumSbp >= 140 || postpartumDbp >= 90 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        {postpartumSbp >= 140 || postpartumDbp >= 90 ? 'ELEVATED BP — MONITOR CLOSELY' : 'STABLE NORMOTENSIVE'}
+                      </span>
+                    </div>
+                    <p className="text-slate-500 text-[10px] leading-snug">
+                      Delayed postpartum preeclampsia peaks between days 3 and 6 after delivery due to fluid mobilization. Scheduled in-clinic check recommended at Day 7.
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -776,6 +1340,7 @@ export const SimulationLabView: React.FC = () => {
                       </button>
                     </>
                   )}
+
                   {activeCategory === 'preeclampsia_risk' && (
                     <>
                       <button
@@ -855,60 +1420,53 @@ export const SimulationLabView: React.FC = () => {
                       </button>
                     </>
                   )}
-                  {activeCategory === 'sensor_reliability' && (
+
+                  {activeCategory === 'gestational_timeline' && (
                     <>
                       <button
                         type="button"
                         onClick={() => {
-                          setMissingPacketRate(18);
-                          setNoiseSigma(5.5);
-                          setDelayMinutes(25);
-                          executeSimulation('sensor_reliability', {
-                            missing_packet_pct: 18,
-                            sensor_noise_sigma: 5.5,
-                            transmission_delay_min: 25,
-                          });
-                        }}
-                        className="px-2.5 py-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 transition-colors font-medium"
-                      >
-                        Noisy Ambulatory Stream
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMissingPacketRate(0);
-                          setNoiseSigma(0.8);
-                          setDelayMinutes(0);
-                          executeSimulation('sensor_reliability', {
-                            missing_packet_pct: 0,
-                            sensor_noise_sigma: 0.8,
-                            transmission_delay_min: 0,
-                          });
+                          const w = Math.min(41, Math.max(Math.ceil(patientBaselineGA) + 1, 35.0));
+                          setTargetGa(w);
+                          setSbpSlope(0.4);
+                          setDbpSlope(0.3);
+                          executeSimulation('gestational_timeline', { target_ga_weeks: w, sbp_slope: 0.4, dbp_slope: 0.3 });
                         }}
                         className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-sky-50 text-slate-700 rounded-lg border border-slate-200 transition-colors"
                       >
-                        Calibrated Sensor
+                        Near-Term (35.0w)
                       </button>
-                    </>
-                  )}
-                  {activeCategory === 'metabolic_health' && (
-                    <>
                       <button
                         type="button"
                         onClick={() => {
-                          setFastingGlucose(108);
-                          setPostMealGlucose(165);
-                          executeSimulation('metabolic_health', {
-                            fasting_glucose: 108,
-                            post_meal_glucose: 165,
-                            unit: glucoseUnit,
-                            weight_kg: maternalWeight,
-                          });
+                          const w = Math.min(41, Math.max(Math.ceil(patientBaselineGA) + 1, 37.0));
+                          setTargetGa(w);
+                          setSbpSlope(0.6);
+                          setDbpSlope(0.4);
+                          executeSimulation('gestational_timeline', { target_ga_weeks: w, sbp_slope: 0.6, dbp_slope: 0.4 });
                         }}
-                        className="px-2.5 py-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 transition-colors font-medium"
+                        className="px-2.5 py-1 text-xs bg-sky-50 hover:bg-sky-100 text-sky-900 rounded-lg border border-sky-200 transition-colors font-medium"
                       >
-                        Impaired Glycemia / GDM
+                        Full Term (37.0w)
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const w = Math.min(41, Math.max(Math.ceil(patientBaselineGA) + 1, 39.0));
+                          setTargetGa(w);
+                          setSbpSlope(1.2);
+                          setDbpSlope(0.8);
+                          executeSimulation('gestational_timeline', { target_ga_weeks: w, sbp_slope: 1.2, dbp_slope: 0.8 });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-900 rounded-lg border border-rose-200 transition-colors font-medium"
+                      >
+                        Accelerating Rise (+1.2/wk)
+                      </button>
+                    </>
+                  )}
+
+                  {activeCategory === 'metabolic_health' && (
+                    <>
                       <button
                         type="button"
                         onClick={() => {
@@ -923,7 +1481,215 @@ export const SimulationLabView: React.FC = () => {
                         }}
                         className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-sky-50 text-slate-700 rounded-lg border border-slate-200 transition-colors"
                       >
-                        Normal Homeostasis
+                        Normal Target (88/118)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFastingGlucose(98);
+                          setPostMealGlucose(145);
+                          executeSimulation('metabolic_health', {
+                            fasting_glucose: 98,
+                            post_meal_glucose: 145,
+                            unit: glucoseUnit,
+                            weight_kg: maternalWeight,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 transition-colors font-medium"
+                      >
+                        Borderline Excursion (98/145)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFastingGlucose(112);
+                          setPostMealGlucose(172);
+                          executeSimulation('metabolic_health', {
+                            fasting_glucose: 112,
+                            post_meal_glucose: 172,
+                            unit: glucoseUnit,
+                            weight_kg: maternalWeight,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-900 rounded-lg border border-rose-200 transition-colors font-medium"
+                      >
+                        GDM High Surge (112/172)
+                      </button>
+                    </>
+                  )}
+
+                  {activeCategory === 'sleep_stress' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSleepHours(8.2);
+                          setSleepRegIdx(88);
+                          setHrvRmssd(48);
+                          setStressScale(2);
+                          executeSimulation('sleep_stress', {
+                            sleep_hours: 8.2,
+                            sleep_regularity_idx: 88,
+                            hrv_rmssd_ms: 48,
+                            stress_scale: 2,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-lg border border-emerald-200 transition-colors font-medium"
+                      >
+                        Restorative Sleep (8.2h, HRV 48)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSleepHours(5.5);
+                          setSleepRegIdx(60);
+                          setHrvRmssd(22);
+                          setStressScale(8);
+                          executeSimulation('sleep_stress', {
+                            sleep_hours: 5.5,
+                            sleep_regularity_idx: 60,
+                            hrv_rmssd_ms: 22,
+                            stress_scale: 8,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-900 rounded-lg border border-rose-200 transition-colors font-medium"
+                      >
+                        Sleep Deficit (5.5h, Stress 8)
+                      </button>
+                    </>
+                  )}
+
+                  {activeCategory === 'sensor_reliability' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMissingPacketRate(18);
+                          setNoiseSigma(5.5);
+                          setDelayMinutes(25);
+                          setDisconnectHours(0);
+                          executeSimulation('sensor_reliability', {
+                            missing_packet_pct: 18,
+                            sensor_noise_sigma: 5.5,
+                            transmission_delay_min: 25,
+                            device_disconnect_hours: 0,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 transition-colors font-medium"
+                      >
+                        Noisy Stream (18%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMissingPacketRate(40);
+                          setNoiseSigma(7.5);
+                          setDelayMinutes(60);
+                          setDisconnectHours(3);
+                          executeSimulation('sensor_reliability', {
+                            missing_packet_pct: 40,
+                            sensor_noise_sigma: 7.5,
+                            transmission_delay_min: 60,
+                            device_disconnect_hours: 3,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-900 rounded-lg border border-rose-200 transition-colors font-medium"
+                      >
+                        Critical Dropout (40%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMissingPacketRate(0);
+                          setNoiseSigma(0.8);
+                          setDelayMinutes(0);
+                          setDisconnectHours(0);
+                          executeSimulation('sensor_reliability', {
+                            missing_packet_pct: 0,
+                            sensor_noise_sigma: 0.8,
+                            transmission_delay_min: 0,
+                            device_disconnect_hours: 0,
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-sky-50 text-slate-700 rounded-lg border border-slate-200 transition-colors"
+                      >
+                        Calibrated Sensor
+                      </button>
+                    </>
+                  )}
+
+                  {activeCategory === 'monitoring_schedule' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedProtocol('manual_daily');
+                          executeSimulation('monitoring_schedule', { protocol: 'manual_daily', monitoring_days: monitoringDays });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-sky-50 text-slate-700 rounded-lg border border-slate-200 transition-colors"
+                      >
+                        Once-Daily (1x)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedProtocol('manual_multi');
+                          executeSimulation('monitoring_schedule', { protocol: 'manual_multi', monitoring_days: monitoringDays });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-sky-50 hover:bg-sky-100 text-sky-900 rounded-lg border border-sky-200 transition-colors font-medium"
+                      >
+                        Three-Times-Daily (3x)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedProtocol('continuous_wearable');
+                          executeSimulation('monitoring_schedule', { protocol: 'continuous_wearable', monitoring_days: monitoringDays });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-lg border border-emerald-200 transition-colors font-medium"
+                      >
+                        Wearable Stream (48x)
+                      </button>
+                    </>
+                  )}
+
+                  {activeCategory === 'postpartum' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPostpartumDay(2);
+                          setPostpartumSbp(122);
+                          setPostpartumDbp(78);
+                          setPostpartumSymptoms([]);
+                          executeSimulation('postpartum', {
+                            postpartum_day: 2,
+                            postpartum_sbp: 122,
+                            postpartum_dbp: 78,
+                            symptoms: [],
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-sky-50 text-slate-700 rounded-lg border border-slate-200 transition-colors"
+                      >
+                        Early Day 2 (122/78)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPostpartumDay(4);
+                          setPostpartumSbp(148);
+                          setPostpartumDbp(96);
+                          setPostpartumSymptoms(['headache']);
+                          executeSimulation('postpartum', {
+                            postpartum_day: 4,
+                            postpartum_sbp: 148,
+                            postpartum_dbp: 96,
+                            symptoms: ['headache'],
+                          });
+                        }}
+                        className="px-2.5 py-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-900 rounded-lg border border-rose-200 transition-colors font-medium"
+                      >
+                        Peak Window Day 4 (148/96)
                       </button>
                     </>
                   )}
@@ -1110,6 +1876,11 @@ export const SimulationLabView: React.FC = () => {
               {/* MODULE C: Gestational Timeline */}
               {activeCategory === 'gestational_timeline' && (
                 <div className="space-y-4">
+                  <div className="p-2.5 bg-sky-50 rounded-lg border border-sky-200 flex justify-between items-center text-xs">
+                    <span className="text-sky-900 font-medium">Current Baseline GA:</span>
+                    <span className="font-mono font-bold text-sky-800">{patientBaselineGA.toFixed(1)} wks</span>
+                  </div>
+
                   <div>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-slate-600 font-medium">Target Gestational Week</span>
@@ -1117,13 +1888,17 @@ export const SimulationLabView: React.FC = () => {
                     </div>
                     <input
                       type="range"
-                      min="30"
-                      max="41"
+                      min={Math.min(40, Math.ceil(patientBaselineGA))}
+                      max="42"
                       step="0.5"
                       value={targetGa}
                       onChange={(e) => setTargetGa(parseFloat(e.target.value))}
                       className="w-full accent-sky-600 cursor-pointer"
                     />
+                    <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                      <span>{Math.min(40, Math.ceil(patientBaselineGA))} wks</span>
+                      <span>42 wks</span>
+                    </div>
                   </div>
 
                   <div>
@@ -1285,11 +2060,15 @@ export const SimulationLabView: React.FC = () => {
                     <input
                       type="range"
                       min="0"
-                      max="45"
+                      max="60"
                       value={missingPacketRate}
                       onChange={(e) => setMissingPacketRate(parseInt(e.target.value))}
                       className="w-full accent-rose-600 cursor-pointer"
                     />
+                    <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                      <span>0% (Clean)</span>
+                      <span>60% (Critical)</span>
+                    </div>
                   </div>
 
                   <div>
@@ -1306,12 +2085,16 @@ export const SimulationLabView: React.FC = () => {
                       onChange={(e) => setDelayMinutes(parseInt(e.target.value))}
                       className="w-full accent-sky-600 cursor-pointer"
                     />
+                    <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                      <span>0 min (Real-time)</span>
+                      <span>120 min (High delay)</span>
+                    </div>
                   </div>
 
                   <div>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-600 font-medium">Noise (±σ units)</span>
-                      <span className="font-mono font-bold text-slate-900">±{noiseSigma}</span>
+                      <span className="text-slate-600 font-medium">Sensor Noise Jitter</span>
+                      <span className="font-mono font-bold text-slate-900">±{noiseSigma} mmHg</span>
                     </div>
                     <input
                       type="range"
@@ -1322,32 +2105,86 @@ export const SimulationLabView: React.FC = () => {
                       onChange={(e) => setNoiseSigma(parseFloat(e.target.value))}
                       className="w-full accent-sky-600 cursor-pointer"
                     />
+                    <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                      <span>±0 (Calibrated)</span>
+                      <span>±12 (Artifact-heavy)</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-600 font-medium">Device Disconnect Duration</span>
+                      <span className="font-mono font-bold text-amber-700">{disconnectHours} hrs</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="12"
+                      step="1"
+                      value={disconnectHours}
+                      onChange={(e) => setDisconnectHours(parseInt(e.target.value))}
+                      className="w-full accent-amber-600 cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                      <span>0 hrs (Continuous)</span>
+                      <span>12 hrs (Extended offline)</span>
+                    </div>
                   </div>
                 </div>
               )}
 
               {/* MODULE G: Monitoring Schedule */}
               {activeCategory === 'monitoring_schedule' && (
-                <div className="space-y-3">
-                  <label className="text-xs text-slate-600 font-medium block">Monitoring Protocol</label>
-                  {[
-                    { id: 'manual_daily', name: 'Once-Daily Manual Cuff', desc: 'Standard antenatal home protocol' },
-                    { id: 'manual_multi', name: 'Three-Times Daily (TID)', desc: 'Higher diurnal sensitivity' },
-                    { id: 'continuous_wearable', name: 'Continuous Wearable Sensor', desc: 'Maximum telemetry completeness' },
-                  ].map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => setSelectedProtocol(p.id)}
-                      className={`w-full p-2.5 rounded-lg border text-left text-xs transition-all ${
-                        selectedProtocol === p.id
-                          ? 'bg-sky-50 border-sky-400 text-sky-900 font-semibold'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white'
-                      }`}
-                    >
-                      <p className="font-semibold text-slate-800">{p.name}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">{p.desc}</p>
-                    </button>
-                  ))}
+                <div className="space-y-3.5">
+                  <div>
+                    <label className="text-xs text-slate-600 font-medium block mb-1.5">Monitoring Protocol</label>
+                    <div className="space-y-2">
+                      {[
+                        { id: 'manual_daily', name: 'Once-Daily Manual Cuff', desc: 'Standard antenatal home protocol (1x/day)' },
+                        { id: 'manual_multi', name: 'Three-Times Daily (TID)', desc: 'Higher diurnal sensitivity (3x/day)' },
+                        { id: 'continuous_wearable', name: 'Continuous Wearable Sensor', desc: 'Maximum telemetry completeness (48x/day)' },
+                      ].map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setSelectedProtocol(p.id);
+                            executeSimulation('monitoring_schedule', { protocol: p.id, monitoring_days: monitoringDays });
+                          }}
+                          className={`w-full p-2.5 rounded-lg border text-left text-xs transition-all ${
+                            selectedProtocol === p.id
+                              ? 'bg-sky-50 border-sky-400 text-sky-900 font-semibold'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white'
+                          }`}
+                        >
+                          <p className="font-semibold text-slate-800">{p.name}</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">{p.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-600 font-medium block mb-1">Observation Horizon</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[7, 14, 30].map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => {
+                            setMonitoringDays(d);
+                            executeSimulation('monitoring_schedule', { protocol: selectedProtocol, monitoring_days: d });
+                          }}
+                          className={`py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                            monitoringDays === d
+                              ? 'bg-sky-50 border-sky-400 text-sky-900'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white'
+                          }`}
+                        >
+                          {d} Days
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1416,6 +2253,40 @@ export const SimulationLabView: React.FC = () => {
                       onChange={(e) => setPostpartumDbp(parseInt(e.target.value))}
                       className="w-full accent-sky-600 cursor-pointer"
                     />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-slate-600 font-medium block mb-1">Reported Symptoms</label>
+                    <div className="grid grid-cols-2 gap-1.5 text-xs">
+                      {[
+                        { id: 'headache', label: 'Severe Headache' },
+                        { id: 'vision_changes', label: 'Visual Changes' },
+                        { id: 'epigastric_pain', label: 'RUQ/Epigastric' },
+                        { id: 'dyspnea', label: 'Shortness of Breath' }
+                      ].map((sym) => {
+                        const checked = postpartumSymptoms.includes(sym.id);
+                        return (
+                          <button
+                            key={sym.id}
+                            type="button"
+                            onClick={() => {
+                              const updated = checked
+                                ? postpartumSymptoms.filter((s) => s !== sym.id)
+                                : [...postpartumSymptoms, sym.id];
+                              setPostpartumSymptoms(updated);
+                              executeSimulation('postpartum', { symptoms: updated });
+                            }}
+                            className={`p-1.5 rounded-lg border text-left text-[11px] font-medium transition-all ${
+                              checked
+                                ? 'bg-rose-50 border-rose-300 text-rose-900 font-semibold'
+                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-white'
+                            }`}
+                          >
+                            {sym.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}

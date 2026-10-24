@@ -223,3 +223,42 @@ def test_scenario_crud_persistence_and_export(client):
     # Verify deleted
     r_check = client.get(f"/api/v1/patients/patient-sim-id/scenarios/{scenario_id}", headers=headers)
     assert r_check.status_code == 404
+
+def test_gestational_timeline_api_simulation(client):
+    """Verifies simulating Gestational Timeline from 31.4w to 36.0w returns expected projection."""
+    token = create_access_token({"sub": "test-sim-clinician", "email": "clinician.sim@pregtwin.org", "role": "clinician"})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    payload = {
+        "category": "gestational_timeline",
+        "current_ga_weeks": 31.4,
+        "target_ga_weeks": 36.0,
+        "baseline_sbp": 120.0,
+        "baseline_dbp": 80.0,
+        "sbp_slope": 0.5,
+        "dbp_slope": 0.3
+    }
+    resp = client.post("/api/v1/patients/patient-sim-id/simulate", headers=headers, json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["category"] == "gestational_timeline"
+    assert "detailed_results" in data
+    assert data["detailed_results"]["current_ga_weeks"] == 31.4
+    assert data["detailed_results"]["target_ga_weeks"] == 36.0
+    assert len(data["detailed_results"]["timeline"]) >= 5
+
+def test_monitoring_schedule_api_simulation(client):
+    """Verifies Monitoring Cadence counterfactual simulation execution."""
+    token = create_access_token({"sub": "test-sim-clinician", "email": "clinician.sim@pregtwin.org", "role": "clinician"})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    payload = {
+        "category": "monitoring_schedule",
+        "protocol": "continuous_wearable",
+        "monitoring_days": 14
+    }
+    resp = client.post("/api/v1/patients/patient-sim-id/simulate", headers=headers, json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["category"] == "monitoring_schedule"
+    assert data["detailed_results"]["selected_protocol"] == "continuous_wearable"

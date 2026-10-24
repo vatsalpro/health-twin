@@ -8,9 +8,21 @@
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-FaceLandmarker-4285F4.svg?style=flat-square&logo=google&logoColor=white)](https://developers.google.com/mediapipe)
 [![Ollama](https://img.shields.io/badge/Ollama-llama3.2:3b-black.svg?style=flat-square&logo=ollama&logoColor=white)](https://ollama.com)
 [![Requesty API](https://img.shields.io/badge/Requesty%20API-Crane%20AI%20Chat-blueviolet.svg?style=flat-square)](https://requesty.ai)
-[![Pytest](https://img.shields.io/badge/Tests-65%2F65%20Passing-success.svg?style=flat-square&logo=pytest&logoColor=white)](https://pytest.org)
-[![Vitest](https://img.shields.io/badge/Vitest-15%2F15%20Passing-brightgreen.svg?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Pytest](https://img.shields.io/badge/Tests-72%2F72%20Passing-success.svg?style=flat-square&logo=pytest&logoColor=white)](https://pytest.org)
+[![Vitest](https://img.shields.io/badge/Vitest-25%2F25%20Passing-brightgreen.svg?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev)
+[![YouTube Demo](https://img.shields.io/badge/YouTube-Video%20Demo-red.svg?style=flat-square&logo=youtube&logoColor=white)](https://youtu.be/GgM0Zp1dtxI)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+
+---
+
+## 👥 Team & Submission Details
+
+| Team Name | Team Member | No. of Team Members | College / Institution | Department | Project Video Demonstration |
+| :--- | :--- | :---: | :--- | :--- | :--- |
+| **`kvatsal03`** | **Vatsal Kumar** | **1** | **Ramaiah Institute of Technology (MSRIT)**<br>Bengaluru, Karnataka, India | **Information Science and Engineering (ISE)** | [▶️ **Watch on YouTube**](https://youtu.be/GgM0Zp1dtxI) |
+
+> 📹 **Video Demonstration URL:** [https://youtu.be/GgM0Zp1dtxI](https://youtu.be/GgM0Zp1dtxI)  
+> *Comprehensive demonstration covering 3D Living Maternal Digital Twin, Dr. Crane AI Doctor workflows, Contactless rPPG & Facial Stress Sensing, Clinical OCR extraction, and Counterfactual Simulation Lab.*
 
 ---
 
@@ -355,11 +367,11 @@ This script:
 The codebase includes exhaustive automated regression and unit tests:
 
 ```bash
-# Run 65 Backend Pytest Tests (100% Passing)
+# Run 72 Backend Pytest Tests (100% Passing)
 cd backend
 python -m pytest tests/ -v
 
-# Run 15 Frontend Vitest Tests (100% Passing)
+# Run 25 Frontend Vitest Tests (100% Passing)
 cd frontend
 npx vitest run
 
@@ -368,9 +380,9 @@ npm run build
 ```
 
 ```
-============================= 65 passed in 87.21s =============================
+============================= 72 passed in 103.38s =============================
 Test Files  2 passed (2)
-     Tests  15 passed (15)
+     Tests  25 passed (25)
 Vite Production Build: 0 errors
 ```
 
@@ -407,6 +419,13 @@ We welcome researchers, obstetricians, biomedical engineers, and developers dedi
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
+### 👥 Team `kvatsal03` (Project Author)
+- **Team Name**: `kvatsal03`
+- **Team Member**: Vatsal Kumar (Number of Members: 1)
+- **College / Institution**: Ramaiah Institute of Technology (MSRIT), Bengaluru, Karnataka, India
+- **Department**: Information Science and Engineering (ISE)
+- **Project Demonstration Video**: [https://youtu.be/GgM0Zp1dtxI](https://youtu.be/GgM0Zp1dtxI)
+
 ### Heartfelt Gratitude
 - Dedicated to the midwives, obstetricians, maternal-fetal medicine specialists, and nurses who work tirelessly to protect mothers and babies.
 - Built with gratitude for open-source communities powering modern medical research: FastAPI, PyMuPDF, Three.js, MediaPipe, React, and Vite.
@@ -415,5 +434,5 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 <p align="center">
   <b>PregTwin</b> • <i>Every beat matters. Every mother matters.</i><br>
-  Developed with ❤️ for Maternal Health Everywhere.
+  Developed with ❤️ by <b>Vatsal Kumar</b> (Team kvatsal03) for Maternal Health Everywhere.
 </p>

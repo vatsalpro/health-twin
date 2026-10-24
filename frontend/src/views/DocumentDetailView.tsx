@@ -27,7 +27,7 @@ import { Modal } from '../components/ui/Modal';
 export const DocumentDetailView: React.FC = () => {
   const { documentId } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
-  const { user, refreshPatientData } = useAuth();
+  const { user, selectedPatient, refreshPatientData } = useAuth();
 
   const [document, setDocument] = useState<MedicalDocument | null>(null);
   const [selectedField, setSelectedField] = useState<ExtractedField | null>(null);
@@ -35,6 +35,8 @@ export const DocumentDetailView: React.FC = () => {
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'FIELDS' | 'SUMMARY'>('FIELDS');
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'PDF' | 'EVIDENCE'>('PDF');
 
   // Modification dialog state
   const [modifyingField, setModifyingField] = useState<ExtractedField | null>(null);
@@ -56,6 +58,13 @@ export const DocumentDetailView: React.FC = () => {
         setSelectedField(doc.extracted_fields[0]);
         setCurrentPage(doc.extracted_fields[0].source_page || 1);
       }
+      try {
+        const blobUrl = await api.getDocumentBlobUrl(documentId);
+        setPdfBlobUrl(blobUrl);
+      } catch (blobErr) {
+        console.warn('PDF blob load error, falling back to evidence view:', blobErr);
+        setViewMode('EVIDENCE');
+      }
     } catch (err: any) {
       console.error('Failed to load document:', err);
       setActionError(`Failed to load document: ${err.message || err}`);
@@ -66,6 +75,11 @@ export const DocumentDetailView: React.FC = () => {
 
   useEffect(() => {
     loadDoc();
+    return () => {
+      if (pdfBlobUrl) {
+        window.URL.revokeObjectURL(pdfBlobUrl);
+      }
+    };
   }, [documentId]);
 
   const handleReview = async (fieldId: string, decision: 'ACCEPT' | 'REJECT' | 'MODIFY') => {
@@ -273,119 +287,262 @@ export const DocumentDetailView: React.FC = () => {
         {/* Left Panel: Document Viewer */}
         <div className="lg:col-span-7 flex flex-col justify-between">
           <Card className="flex-1 flex flex-col">
-            <CardHeader className="py-3 px-4 border-b border-slate-200 flex flex-row items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-slate-600">
-                <span>Page {currentPage} of {document.page_count}</span>
+            <CardHeader className="py-2.5 px-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              {/* View Mode Toggle */}
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
                 <button
-                  disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 transition-colors"
+                  type="button"
+                  disabled={!pdfBlobUrl}
+                  onClick={() => setViewMode('PDF')}
+                  className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                    viewMode === 'PDF' && pdfBlobUrl
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 disabled:opacity-40'
+                  }`}
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  Original PDF Document
                 </button>
                 <button
-                  disabled={currentPage >= document.page_count}
-                  onClick={() => setCurrentPage((p) => Math.min(document.page_count, p + 1))}
-                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 transition-colors"
+                  type="button"
+                  onClick={() => setViewMode('EVIDENCE')}
+                  className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                    viewMode === 'EVIDENCE' || !pdfBlobUrl
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  Extracted Evidence Canvas
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 text-xs">
-                <button
-                  onClick={() => setZoomLevel((z) => Math.max(70, z - 10))}
-                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700"
-                >
-                  <ZoomOut className="w-4 h-4" />
-                </button>
-                <span className="font-mono text-xs text-slate-700">{zoomLevel}%</span>
-                <button
-                  onClick={() => setZoomLevel((z) => Math.min(150, z + 10))}
-                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700"
-                >
-                  <ZoomIn className="w-4 h-4" />
-                </button>
-              </div>
-            </CardHeader>
-
-            {/* Document Canvas */}
-            <div className="flex-1 p-6 bg-slate-100 overflow-auto flex flex-col items-center">
-              <div
-                style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
-                className="w-full max-w-xl bg-white border border-slate-300 rounded-lg p-8 shadow-sm space-y-4 text-xs font-mono transition-transform"
-              >
-                <div className="border-b border-slate-200 pb-3 text-center">
-                  <p className="font-bold text-slate-900 text-sm tracking-wide">
-                    ST. MARGARET MATERNAL-FETAL MEDICINE CENTER
-                  </p>
-                  <p className="text-xs text-sky-700 uppercase font-semibold mt-0.5">
-                    Longitudinal Antenatal Surveillance Report — Page {currentPage}
-                  </p>
+              {/* Page & Zoom Controls */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <span>Page {currentPage} of {document.page_count}</span>
+                  <button
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    disabled={currentPage >= document.page_count}
+                    onClick={() => setCurrentPage((p) => Math.min(document.page_count, p + 1))}
+                    className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
 
-                {currentPage === 1 ? (
-                  <div className="space-y-4 text-slate-700">
-                    <div className="flex justify-between border-b border-slate-100 pb-2 text-xs">
-                      <span>SUBJECT: MAYA LIN (MRN-PT-2026-001)</span>
-                      <span>GA: 31w 4d | DATE: 2026-09-15</span>
-                    </div>
-
-                    {/* Section 1: Hemodynamics Highlight Block */}
-                    <div
-                      className={`p-3 rounded-lg border transition-all ${
-                        selectedField?.category === 'blood_pressure'
-                          ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-500/20'
-                          : 'border-slate-200 bg-slate-50'
-                      }`}
+                {viewMode === 'EVIDENCE' && (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <button
+                      onClick={() => setZoomLevel((z) => Math.max(70, z - 10))}
+                      className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700"
                     >
-                      <p className="font-bold text-slate-900 text-xs mb-1">1. HEMODYNAMIC OBSERVATIONS</p>
-                      <p className="text-sm font-bold text-sky-900">Blood Pressure: 142/92 mmHg</p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Measurement Context: Sitting, Right Arm, Automated Sphygmomanometer
-                      </p>
-                    </div>
-
-                    {/* Section 2: Urinalysis Highlight Block */}
-                    <div
-                      className={`p-3 rounded-lg border transition-all ${
-                        selectedField?.category === 'urine_protein'
-                          ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-500/20'
-                          : 'border-slate-200 bg-slate-50'
-                      }`}
+                      <ZoomOut className="w-4 h-4" />
+                    </button>
+                    <span className="font-mono text-xs text-slate-700">{zoomLevel}%</span>
+                    <button
+                      onClick={() => setZoomLevel((z) => Math.min(150, z + 10))}
+                      className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700"
                     >
-                      <p className="font-bold text-slate-900 text-xs mb-1">2. POINT-OF-CARE URINALYSIS</p>
-                      <p className="text-sm font-bold text-amber-800">Urine Protein: 1+ (dipstick automated reader)</p>
-                      <p className="text-xs font-bold text-slate-800">Protein/Creatinine Ratio (UPCR): 0.34 mg/mg [Ref &lt; 0.30]</p>
-                    </div>
-
-                    {/* Section 3: Laboratory Highlight Block */}
-                    <div
-                      className={`p-3 rounded-lg border transition-all ${
-                        selectedField?.category === 'laboratory'
-                          ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-500/20'
-                          : 'border-slate-200 bg-slate-50'
-                      }`}
-                    >
-                      <p className="font-bold text-slate-900 text-xs mb-1">3. COMPLETE BLOOD & BIOCHEMISTRY PANEL</p>
-                      <p>Platelet Count: 168 x10^3/uL [Ref: 150 - 450]</p>
-                      <p>AST (SGOT): 32 U/L | ALT (SGPT): 28 U/L</p>
-                      <p>Serum Creatinine: 0.78 mg/dL [Ref: 0.40 - 0.90]</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4 text-slate-700">
-                    <p className="font-bold text-slate-900 text-xs">HISTORICAL TREND LOGS & SIGNATURE</p>
-                    <p>2026-07-20 (GA 24.0w): BP 122/78 mmHg | Protein: Neg | Platelets: 210k</p>
-                    <p>2026-08-18 (GA 28.1w): BP 132/84 mmHg | Protein: Trace | Platelets: 192k</p>
-                    <p>2026-09-15 (GA 31.4w): BP 142/92 mmHg | Protein: 1+ | Platelets: 168k</p>
-                    <div className="pt-8 border-t border-slate-200 text-xs">
-                      Physician Signature: Dr. Elena Vance, MD, FACOG
-                    </div>
+                      <ZoomIn className="w-4 h-4" />
+                    </button>
                   </div>
                 )}
               </div>
-            </div>
+            </CardHeader>
+
+            {/* Document Content */}
+            {viewMode === 'PDF' && pdfBlobUrl ? (
+              <div className="flex-1 w-full min-h-[580px] bg-slate-100 flex flex-col p-2">
+                <iframe
+                  src={`${pdfBlobUrl}#toolbar=1&navpanes=0`}
+                  className="w-full flex-1 min-h-[580px] rounded-lg border border-slate-300 bg-white"
+                  title={document.filename}
+                />
+              </div>
+            ) : (
+              /* Dynamic Evidence Canvas */
+              <div className="flex-1 p-6 bg-slate-100 overflow-auto flex flex-col items-center">
+                <div
+                  style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
+                  className="w-full max-w-xl bg-white border border-slate-300 rounded-lg p-8 shadow-sm space-y-4 text-xs font-mono transition-transform"
+                >
+                  {/* Dynamic Facility Header */}
+                  <div className="border-b border-slate-200 pb-3 text-center">
+                    <p className="font-bold text-slate-900 text-sm tracking-wide">
+                      {document.source_institution || 'OBSTETRIC CLINICAL CENTER'}
+                    </p>
+                    <p className="text-xs text-sky-700 uppercase font-semibold mt-0.5">
+                      {document.category} — Page {currentPage}
+                    </p>
+                  </div>
+
+                  {/* Dynamic Patient Details */}
+                  <div className="space-y-4 text-slate-700">
+                    <div className="flex justify-between border-b border-slate-100 pb-2 text-xs font-bold">
+                      <span>
+                        SUBJECT:{' '}
+                        {(
+                          document.patient_name ||
+                          (selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : 'Patient')
+                        ).toUpperCase()}{' '}
+                        (
+                        {document.patient_mrn ||
+                          (selectedPatient ? selectedPatient.mrn : 'MRN-PT-2026-003')}
+                        )
+                      </span>
+                      <span>
+                        GA:{' '}
+                        {document.extracted_fields.find(
+                          (f) =>
+                            f.field_name === 'gestational_age_weeks' ||
+                            f.field_name === 'gestational_age' ||
+                            f.field_name === 'ga'
+                        )?.extracted_value ||
+                          (selectedPatient?.episodes?.[0]?.current_gestational_age_weeks
+                            ? `${selectedPatient.episodes[0].current_gestational_age_weeks}`
+                            : '16.0')}
+                        w | DATE: {document.report_date || '2026-10-15'}
+                      </span>
+                    </div>
+
+                    {/* Section 1: Hemodynamics Highlight Block */}
+                    {(() => {
+                      const sbp = document.extracted_fields.find(
+                        (f) => f.field_name === 'systolic_bp' || f.field_name === 'sbp'
+                      );
+                      const dbp = document.extracted_fields.find(
+                        (f) => f.field_name === 'diastolic_bp' || f.field_name === 'dbp'
+                      );
+                      if (!sbp && !dbp) return null;
+                      return (
+                        <div
+                          onClick={() => sbp && setSelectedField(sbp)}
+                          className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                            selectedField?.category === 'blood_pressure'
+                              ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-500/20'
+                              : 'border-slate-200 bg-slate-50 hover:bg-slate-100/60'
+                          }`}
+                        >
+                          <p className="font-bold text-slate-900 text-xs mb-1">
+                            1. HEMODYNAMIC OBSERVATIONS
+                          </p>
+                          <p className="text-sm font-bold text-sky-900">
+                            Blood Pressure: {sbp ? sbp.extracted_value : '--'}/
+                            {dbp ? dbp.extracted_value : '--'} mmHg
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Source: {sbp?.source_text || dbp?.source_text || 'Automated Sphygmomanometer'}
+                          </p>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Section 2: Urinalysis Highlight Block */}
+                    {(() => {
+                      const up = document.extracted_fields.find(
+                        (f) => f.field_name === 'urine_protein' || f.field_name === 'proteinuria'
+                      );
+                      const upcr = document.extracted_fields.find(
+                        (f) => f.field_name === 'protein_creatinine_ratio' || f.field_name === 'upcr'
+                      );
+                      if (!up && !upcr) return null;
+                      return (
+                        <div
+                          onClick={() => (up ? setSelectedField(up) : upcr && setSelectedField(upcr))}
+                          className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                            selectedField?.category === 'urine_protein'
+                              ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-500/20'
+                              : 'border-slate-200 bg-slate-50 hover:bg-slate-100/60'
+                          }`}
+                        >
+                          <p className="font-bold text-slate-900 text-xs mb-1">
+                            2. POINT-OF-CARE URINALYSIS
+                          </p>
+                          {up && (
+                            <p className="text-sm font-bold text-amber-800">
+                              Urine Protein: {up.extracted_value}
+                            </p>
+                          )}
+                          {upcr && (
+                            <p className="text-xs font-bold text-slate-800">
+                              Protein/Creatinine Ratio (UPCR): {upcr.extracted_value} mg/mg [Ref &lt; 0.30]
+                            </p>
+                          )}
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Source: {up?.source_text || upcr?.source_text || 'Urinalysis dipstick assessment'}
+                          </p>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Section 3: Laboratory Highlight Block */}
+                    {(() => {
+                      const plt = document.extracted_fields.find(
+                        (f) => f.field_name === 'platelet_count' || f.field_name === 'platelets'
+                      );
+                      const ast = document.extracted_fields.find((f) => f.field_name === 'ast');
+                      const alt = document.extracted_fields.find((f) => f.field_name === 'alt');
+                      const cr = document.extracted_fields.find(
+                        (f) => f.field_name === 'serum_creatinine' || f.field_name === 'creatinine'
+                      );
+                      const hb = document.extracted_fields.find(
+                        (f) => f.field_name === 'hemoglobin' || f.field_name === 'hgb'
+                      );
+                      if (!plt && !ast && !alt && !cr && !hb) return null;
+                      return (
+                        <div
+                          onClick={() => plt && setSelectedField(plt)}
+                          className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                            selectedField?.category === 'laboratory'
+                              ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-500/20'
+                              : 'border-slate-200 bg-slate-50 hover:bg-slate-100/60'
+                          }`}
+                        >
+                          <p className="font-bold text-slate-900 text-xs mb-1">
+                            3. COMPLETE BLOOD & BIOCHEMISTRY PANEL
+                          </p>
+                          {hb && <p>Hemoglobin: {hb.extracted_value} {hb.unit || 'g/dL'}</p>}
+                          {plt && (
+                            <p>
+                              Platelet Count: {plt.extracted_value} {plt.unit || '10^3/uL'} [Ref: 150 - 450]
+                            </p>
+                          )}
+                          {(ast || alt) && (
+                            <p>
+                              {ast ? `AST (SGOT): ${ast.extracted_value} ${ast.unit || 'U/L'}` : ''}
+                              {ast && alt ? ' | ' : ''}
+                              {alt ? `ALT (SGPT): ${alt.extracted_value} ${alt.unit || 'U/L'}` : ''}
+                            </p>
+                          )}
+                          {cr && (
+                            <p>
+                              Serum Creatinine: {cr.extracted_value} {cr.unit || 'mg/dL'} [Ref: 0.40 - 0.90]
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Section 4: Document OCR Text Transcript */}
+                    {document.extracted_text && (
+                      <div className="pt-3 border-t border-slate-200 text-[11px] text-slate-600">
+                        <p className="font-bold text-slate-800 mb-1">
+                          DOCUMENT OCR TRANSCRIPT PREVIEW:
+                        </p>
+                        <pre className="whitespace-pre-wrap font-mono p-2.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] text-slate-700 max-h-48 overflow-y-auto">
+                          {document.extracted_text}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
               <span>PyMuPDF Text & Vector Coordinates Preserved</span>

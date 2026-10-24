@@ -77,6 +77,19 @@ export interface StressModelCard {
   knownLimitations: string[];
 }
 
+export interface PhysiologicalTensionIndicator {
+  score: number; // 1.0 to 10.0 scale
+  category: 'RELAXED_OPTIMAL' | 'MILD_TENSION' | 'MODERATE_TENSION' | 'ELEVATED_TENSION';
+  label: string;
+  description: string;
+  drivers: {
+    browTension: { score: number; label: string };
+    blinkCadence: { rate: number; label: string };
+    lipPress: { score: number; label: string };
+    pulseArousal: { bpm: number | null; label: string };
+  };
+}
+
 export interface StressEstimationPipelineOutput {
   status: 'UNAVAILABLE_AWAITING_VALIDATED_CLASSIFIER' | 'CLASSIFIED';
   stressCategory: 'LOWER_RELATIVE_STRESS' | 'MODERATE_RELATIVE_STRESS' | 'HIGHER_RELATIVE_STRESS' | null;
@@ -86,6 +99,7 @@ export interface StressEstimationPipelineOutput {
   missingInputs: string[];
   scientificExplanation: string;
   clinicalDisclaimer: string;
+  tensionIndicator?: PhysiologicalTensionIndicator;
 }
 
 export class StressAnalysisPipeline {
@@ -167,6 +181,85 @@ export class StressAnalysisPipeline {
     if (!wearableVitals?.hr) missingInputs.push('Continuous Wearable ECG/PPG');
     if (userReportedRating === null) missingInputs.push('User Self-Reported Reference');
 
+    // Compute physiological physical tension indicator (observable tension metrics, non-psychiatric)
+    let tensionIndicator: PhysiologicalTensionIndicator | undefined = undefined;
+    if (facialMetrics && facialMetrics.faceDetected) {
+      // 1. Brow Corrugator / Squint Tension
+      const browScore = Math.min(10.0, Math.max(1.0, (facialMetrics.browFurrow * 0.7 + facialMetrics.eyeSquint * 0.3) * 10));
+      const browLabel = browScore < 3.5 ? 'Relaxed brow' : browScore < 6.5 ? 'Moderate furrowing' : 'Marked brow tension';
+
+      // 2. Lip / Mouth Press
+      const lipScore = Math.min(10.0, Math.max(1.0, (facialMetrics.lipPress * 0.8 + facialMetrics.mouthFrown * 0.2) * 10));
+      const lipLabel = lipScore < 3.5 ? 'Neutral mouth' : lipScore < 6.5 ? 'Mild compression' : 'Tight lip tension';
+
+      // 3. Blink Cadence
+      const blinkRate = facialMetrics.blinkRatePerMin;
+      let blinkScore = 2.0;
+      let blinkLabel = 'Normal cadence';
+      if (blinkRate >= 12 && blinkRate <= 24) {
+        blinkScore = 2.0;
+        blinkLabel = `${blinkRate}/min (optimal resting)`;
+      } else if (blinkRate > 24) {
+        blinkScore = Math.min(10.0, 2.0 + (blinkRate - 24) * 0.35);
+        blinkLabel = `${blinkRate}/min (elevated cadence)`;
+      } else {
+        blinkScore = Math.min(8.0, 2.0 + (12 - blinkRate) * 0.4);
+        blinkLabel = `${blinkRate}/min (low cadence)`;
+      }
+
+      // 4. Cardiac Autonomic Pulse
+      const pulseBpm = rppgResult?.pulseBpm ?? wearableVitals?.hr ?? null;
+      let pulseScore = 3.0;
+      let pulseLabel = 'Awaiting pulse signal';
+      if (pulseBpm !== null) {
+        if (pulseBpm <= 82) {
+          pulseScore = 2.5;
+          pulseLabel = `${pulseBpm} bpm (calm resting)`;
+        } else if (pulseBpm <= 96) {
+          pulseScore = 4.5 + ((pulseBpm - 82) / 14) * 2.0;
+          pulseLabel = `${pulseBpm} bpm (mild autonomic arousal)`;
+        } else {
+          pulseScore = Math.min(10.0, 6.5 + ((pulseBpm - 96) / 20) * 3.5);
+          pulseLabel = `${pulseBpm} bpm (elevated cardiac rate)`;
+        }
+      }
+
+      // Composite weighted score (1.0 - 10.0)
+      const rawComposite = (browScore * 0.35) + (lipScore * 0.25) + (blinkScore * 0.20) + (pulseScore * 0.20);
+      const score = Math.max(1.0, Math.min(10.0, Math.round(rawComposite * 10) / 10));
+
+      let category: 'RELAXED_OPTIMAL' | 'MILD_TENSION' | 'MODERATE_TENSION' | 'ELEVATED_TENSION' = 'RELAXED_OPTIMAL';
+      let label = 'Relaxed / Optimal Range';
+      let description = 'Facial musculature shows low tension; cardiac autonomic pulse indicates resting equilibrium.';
+
+      if (score >= 7.5) {
+        category = 'ELEVATED_TENSION';
+        label = 'Elevated Physical Tension';
+        description = 'Marked facial action unit activation (corrugator/orbicularis oris) combined with elevated autonomic pulse rate.';
+      } else if (score >= 5.5) {
+        category = 'MODERATE_TENSION';
+        label = 'Moderate Physical Tension';
+        description = 'Notable brow furrowing or lip compression observed alongside elevated cardiac pacing.';
+      } else if (score >= 3.5) {
+        category = 'MILD_TENSION';
+        label = 'Mild Muscle Tension';
+        description = 'Mild observable facial muscle tone with stable autonomic baseline.';
+      }
+
+      tensionIndicator = {
+        score,
+        category,
+        label,
+        description,
+        drivers: {
+          browTension: { score: Math.round(browScore * 10) / 10, label: browLabel },
+          blinkCadence: { rate: blinkRate, label: blinkLabel },
+          lipPress: { score: Math.round(lipScore * 10) / 10, label: lipLabel },
+          pulseArousal: { bpm: pulseBpm, label: pulseLabel },
+        },
+      };
+    }
+
     // Strict Defensible ML Rule:
     // We do NOT fabricate a stress score or convert arbitrary facial blendshapes into a percentage.
     // We report the measurable features truthfully and state that automated classification is UNAVAILABLE.
@@ -185,6 +278,7 @@ export class StressAnalysisPipeline {
       clinicalDisclaimer:
         'RESEARCH PROTOTYPE. This system does NOT evaluate mental health, depression, maternal anxiety, ' +
         'or preeclampsia risk. Do not use for autonomous clinical triage or medical decision-making.',
+      tensionIndicator,
     };
   }
 }

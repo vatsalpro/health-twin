@@ -92,11 +92,15 @@ def get_chat_history(
 
         formatted.append({
             "id": m.id,
+            "patient_id": m.patient_id,
             "sender_type": m.sender_type,
+            "role": "user" if m.sender_type in ("patient", "user") else "assistant",
+            "message": m.message_text,
             "message_text": m.message_text,
             "intent_category": m.intent_category,
             "is_emergency": m.is_emergency,
             "sources": sources,
+            "grounding_sources": sources,
             "created_at": m.created_at.isoformat()
         })
 

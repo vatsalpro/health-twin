@@ -382,6 +382,7 @@ class MaternalSimulationService:
         reliability_score = round(max(5.0, 100.0 - (100.0 - completeness) * 0.5 - noise_penalty - delay_penalty), 1)
 
         reliability_category = "ROBUST" if reliability_score >= 80.0 else ("ACCEPTABLE" if reliability_score >= 60.0 else "UNRELIABLE_DEGRADED")
+        uncertainty_multiplier = round(1.0 + (100.0 - reliability_score) / 50.0, 2)
 
         return {
             "category": "sensor_reliability",
@@ -399,6 +400,8 @@ class MaternalSimulationService:
                 "reliability_category": reliability_category,
                 "risk_of_undetected_spikes": "HIGH" if completeness < 65.0 or delay_penalty > 15.0 else "LOW"
             },
+            "uncertainty_multiplier": uncertainty_multiplier,
+            "telemetry_reliability_score": reliability_score,
             "research_implication": (
                 f"Under {missing_packet_pct}% packet loss and {sensor_noise_sigma} noise variance, downstream risk algorithms "
                 f"must apply uncertainty buffers. Quality status categorized as {reliability_category}."

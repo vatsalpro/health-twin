@@ -87,6 +87,8 @@ export interface ReportSummary {
 export interface MedicalDocument {
   id: string;
   patient_id: string;
+  patient_name?: string;
+  patient_mrn?: string;
   episode_id?: string;
   filename: string;
   file_size_bytes: number;
@@ -98,6 +100,7 @@ export interface MedicalDocument {
   ocr_engine?: string;
   ai_provider?: string;
   page_count: number;
+  extracted_text?: string;
   created_at: string;
   extracted_fields: ExtractedField[];
   summary?: ReportSummary;
@@ -379,23 +382,32 @@ export interface DoctorSlot {
   start_time: string;
   end_time: string;
   is_available: boolean;
-  slot_type: string;
+  slot_type?: string;
+  formatted_time?: string;
+  formatted_date?: string;
 }
 
 export interface Appointment {
   id: string;
   patient_id: string;
   doctor_id: string;
-  scheduled_start: string;
-  scheduled_end: string;
-  status: 'SCHEDULED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'COMPLETED';
-  appointment_type: 'ROUTINE_PRENATAL' | 'URGENT_REVIEW' | 'TELEHEALTH' | 'POSTPARTUM_FOLLOWUP';
+  scheduled_start?: string;
+  scheduled_end?: string;
+  start_time?: string;
+  end_time?: string;
+  status: 'SCHEDULED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'COMPLETED' | string;
+  appointment_type: 'ROUTINE_PRENATAL' | 'URGENT_REVIEW' | 'TELEHEALTH' | 'POSTPARTUM_FOLLOWUP' | string;
   reason?: string;
   patient_notes?: string;
   clinician_notes?: string;
   booked_via?: string;
+  booking_channel?: string;
   doctor_name?: string;
   patient_name?: string;
+  cancellation_reason?: string;
+  cancelled_at?: string;
+  formatted_time?: string;
+  formatted_date?: string;
   created_at: string;
   updated_at?: string;
 }
@@ -458,17 +470,30 @@ export interface AIChatRequest {
 }
 
 export interface AIChatResponse {
-  id: string;
+  id?: string;
+  message_id?: string;
   patient_id: string;
   intent_category: string;
   assistant_reply: string;
-  mascot_expression: 'friendly' | 'caring' | 'attentive' | 'alert' | 'encouraging';
+  mascot_expression: 'friendly' | 'caring' | 'attentive' | 'alert' | 'encouraging' | 'celebrating' | string;
   is_emergency: boolean;
   emergency_event_id?: string;
   emergency_instructions?: string;
-  suggested_followups: string[];
+  suggested_followups?: string[];
   grounding_sources: string[];
+  suggested_slots?: DoctorSlot[];
   doctor_slots?: DoctorSlot[];
+  action_taken?: {
+    appointment_booked?: boolean;
+    appointment_id?: string;
+    doctor_name?: string;
+    start_time?: string;
+    formatted_date?: string;
+    formatted_time?: string;
+    appointment_type?: string;
+    status?: string;
+    [key: string]: any;
+  };
   active_orders?: MedicationOrder[];
   created_at: string;
 }
@@ -589,6 +614,13 @@ class ApiClient {
       headers: this.getHeaders(),
     }, 30000);
     return this.handleResponse<MedicalDocument>(res);
+  }
+
+  async getPatientDocuments(patientId: string): Promise<MedicalDocument[]> {
+    const res = await this.fetchWithTimeout(`${API_BASE}/documents/patient/${patientId}`, {
+      headers: this.getHeaders(),
+    }, 30000);
+    return this.handleResponse<MedicalDocument[]>(res);
   }
 
   async reviewField(docId: string, fieldId: string, decision: string, correction?: string, notes?: string): Promise<any> {
@@ -763,6 +795,25 @@ class ApiClient {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
+  }
+
+  async getDocumentBlobUrl(documentId: string): Promise<string> {
+    const res = await fetch(`${API_BASE}/documents/${documentId}/file`, {
+      headers: this.getHeaders(),
+    });
+    if (!res.ok) {
+      const resDl = await fetch(`${API_BASE}/documents/${documentId}/download`, {
+        headers: this.getHeaders(),
+      });
+      if (!resDl.ok) {
+        const err = await resDl.json().catch(() => ({}));
+        throw new Error(err.detail || `Failed to fetch document file`);
+      }
+      const blob = await resDl.blob();
+      return window.URL.createObjectURL(blob);
+    }
+    const blob = await res.blob();
+    return window.URL.createObjectURL(blob);
   }
 
   // IoT Devices & Multi-Sensor
@@ -999,17 +1050,33 @@ class ApiClient {
   async bookAppointment(bookingData: {
     patient_id: string;
     doctor_id: string;
-    scheduled_start: string;
-    scheduled_end: string;
+    scheduled_start?: string;
+    scheduled_end?: string;
+    start_time?: string;
+    end_time?: string;
     appointment_type?: string;
     reason?: string;
     patient_notes?: string;
     booked_via?: string;
+    booking_channel?: string;
   }): Promise<Appointment> {
-    const res = await fetch(`${API_BASE}/appointments`, {
+    const startTime = bookingData.start_time || bookingData.scheduled_start;
+    const endTime = bookingData.end_time || bookingData.scheduled_end;
+    const channel = bookingData.booking_channel || bookingData.booked_via || 'ui_web';
+    const payload = {
+      ...bookingData,
+      start_time: startTime,
+      scheduled_start: startTime,
+      end_time: endTime,
+      scheduled_end: endTime,
+      booking_channel: channel,
+      booked_via: channel,
+      reason: bookingData.reason || bookingData.patient_notes || 'Routine prenatal consultation',
+    };
+    const res = await fetch(`${API_BASE}/appointments/book`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify(bookingData),
+      body: JSON.stringify(payload),
     });
     return this.handleResponse<Appointment>(res);
   }
@@ -1024,9 +1091,11 @@ class ApiClient {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({
+        new_start_time: newStart,
         new_scheduled_start: newStart,
         new_scheduled_end: newEnd,
-        reschedule_reason: reason,
+        reason: reason || 'Patient requested reschedule',
+        reschedule_reason: reason || 'Patient requested reschedule',
       }),
     });
     return this.handleResponse<Appointment>(res);
@@ -1036,7 +1105,10 @@ class ApiClient {
     const res = await fetch(`${API_BASE}/appointments/${appointmentId}/cancel`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify({ cancellation_reason: reason }),
+      body: JSON.stringify({
+        cancellation_reason: reason || 'Patient requested cancellation',
+        reason: reason || 'Patient requested cancellation',
+      }),
     });
     return this.handleResponse<Appointment>(res);
   }
@@ -1125,7 +1197,20 @@ class ApiClient {
     const res = await fetch(`${API_BASE}/ai-assistant/history/${patientId}?limit=${limit}`, {
       headers: this.getHeaders(),
     });
-    return this.handleResponse<AIChatMessageItem[]>(res);
+    const data = await this.handleResponse<any>(res);
+    const rawList: any[] = Array.isArray(data) ? data : (data?.messages || []);
+    return rawList.map((m: any) => ({
+      id: m.id || `msg-${Math.random().toString(36).substring(2, 9)}`,
+      patient_id: m.patient_id || patientId,
+      sender_user_id: m.sender_user_id || '',
+      role: (m.role || (m.sender_type === 'patient' || m.sender_type === 'user' ? 'user' : 'assistant')) as 'user' | 'assistant' | 'system',
+      message: m.message || m.message_text || '',
+      intent_category: m.intent_category,
+      is_emergency: Boolean(m.is_emergency),
+      mascot_expression: m.mascot_expression || 'friendly',
+      grounding_sources: m.grounding_sources || m.sources || [],
+      created_at: m.created_at || new Date().toISOString(),
+    }));
   }
 
   async submitAIAssistantFeedback(feedbackData: {

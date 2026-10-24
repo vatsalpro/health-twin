@@ -47,12 +47,18 @@ export class RppgProcessor {
   // Circular buffer for raw RGB skin reflectance samples
   private samples: RppgFrameSample[] = [];
   private readonly maxBufferSize = 512; // ~17 seconds at 30 fps
-  private readonly minConvergenceSamples = 240; // ~8 seconds at 30 fps
+  private readonly minConvergenceSamples = 120; // ~4 seconds at 30 fps for responsive convergence
 
   private sessionStartTime: number = 0;
   private ppgSignalBuffer: number[] = [];
   private lastPulseEstimate: number | null = null;
   private pulseEstimatesHistory: number[] = [];
+
+  // Temporal smoothing, frame rate throttling, and hysteresis state
+  private lastSampleTimestamp: number = 0;
+  private lastValidBpm: number | null = null;
+  private lastValidTimestamp: number = 0;
+  private recentValidEstimates: number[] = [];
 
   constructor() {
     this.reset();
@@ -63,6 +69,10 @@ export class RppgProcessor {
     this.ppgSignalBuffer = [];
     this.pulseEstimatesHistory = [];
     this.lastPulseEstimate = null;
+    this.lastSampleTimestamp = 0;
+    this.lastValidBpm = null;
+    this.lastValidTimestamp = 0;
+    this.recentValidEstimates = [];
     this.sessionStartTime = Date.now();
   }
 
@@ -75,6 +85,13 @@ export class RppgProcessor {
     timestamp = Date.now()
   ): RppgFrameSample | null {
     if (!rois || rois.length === 0) return null;
+
+    // Throttle sampling to ~30-33 fps (minimum 26 ms between frames)
+    // Eliminates high-refresh rate duplicate frames that cause staircase spectral artifacts
+    if (this.lastSampleTimestamp > 0 && timestamp - this.lastSampleTimestamp < 26) {
+      return null;
+    }
+    this.lastSampleTimestamp = timestamp;
 
     let totalR = 0;
     let totalG = 0;
@@ -164,11 +181,11 @@ export class RppgProcessor {
     const motionStatus: 'STABLE' | 'EXCESSIVE_MOTION' =
       currentMotionStability === 'EXCESSIVE_MOTION' ? 'EXCESSIVE_MOTION' : 'STABLE';
 
-    // 1. Guard: Check minimum sample convergence threshold (8 seconds at ~30 fps)
+    // 1. Guard: Check minimum sample convergence threshold (~4 seconds at ~30 fps)
     if (this.samples.length < this.minConvergenceSamples) {
       return {
         status: 'BUFFERING',
-        reason: `Converging optical skin reflectance buffer (${durationSeconds}s / 8.0s required)...`,
+        reason: `Converging optical skin reflectance buffer (${durationSeconds}s / 4.0s required)...`,
         durationSeconds,
         bufferProgressPct,
         pulseBpm: null,
@@ -272,26 +289,39 @@ export class RppgProcessor {
     }
     meanS /= N;
 
-    // 4. Detrending & Windowing
+    // Approximate frame rate based on recorded timestamps
+    const timeDeltaSec = (this.samples[N - 1].timestamp - this.samples[0].timestamp) / 1000;
+    const samplingFreq = timeDeltaSec > 0 ? (N - 1) / timeDeltaSec : 30.0;
+
+    // 4. Moving Average Detrending (High-pass baseline drift & respiratory removal) + Hanning Window
+    const halfWin = Math.max(3, Math.round(samplingFreq * 0.45)); // ~0.9s window (strips frequencies < 0.7 Hz)
     const zeroCentered: number[] = new Array(N);
+    const detrendedSignal: number[] = new Array(N);
+
     for (let i = 0; i < N; i++) {
+      const start = Math.max(0, i - halfWin);
+      const end = Math.min(N, i + halfWin + 1);
+      let localSum = 0;
+      for (let j = start; j < end; j++) {
+        localSum += rawPulseSignal[j];
+      }
+      const localMean = localSum / (end - start);
+      const detrended = rawPulseSignal[i] - localMean;
+      detrendedSignal[i] = detrended;
+
       // Hanning window to reduce spectral leakage
       const w = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (N - 1)));
-      zeroCentered[i] = (rawPulseSignal[i] - meanS) * w;
+      zeroCentered[i] = detrended * w;
     }
 
-    // Update waveform buffer for real-time visualization
-    const latestSignalSample = rawPulseSignal[N - 1] - meanS;
+    // Update waveform buffer for real-time visualization with clean detrended wave
+    const latestSignalSample = detrendedSignal[N - 1];
     this.ppgSignalBuffer.push(latestSignalSample);
     if (this.ppgSignalBuffer.length > 120) {
       this.ppgSignalBuffer.shift();
     }
 
     // 5. Discrete Fourier Transform (DFT) over cardiac frequency band (0.75 - 3.0 Hz = 45 - 180 bpm)
-    // Approximate frame rate based on recorded timestamps
-    const timeDeltaSec = (this.samples[N - 1].timestamp - this.samples[0].timestamp) / 1000;
-    const samplingFreq = timeDeltaSec > 0 ? (N - 1) / timeDeltaSec : 30.0;
-
     const minFreq = 0.75; // 45 bpm
     const maxFreq = 3.0; // 180 bpm
     const freqSteps = 90;
@@ -324,47 +354,97 @@ export class RppgProcessor {
       }
     }
 
-    // 6. Signal-to-Noise Ratio (SNR) Calculation
-    // Peak band: peakFreq +/- 0.15 Hz
-    let peakBandPower = 0;
+    // 6. Signal-to-Noise Ratio (SNR) Calculation with PSD Density & 2nd Harmonic Inclusion
+    // Fundamental band: peakFreq +/- 0.15 Hz
+    // First harmonic band: 2 * peakFreq +/- 0.15 Hz (if <= 3.0 Hz)
+    let signalBandPower = 0;
+    let signalBinsCount = 0;
+    let noiseBandPower = 0;
+    let noiseBinsCount = 0;
+
+    const hasHarmonic = 2 * peakFreq <= maxFreq;
+
     for (const bin of cardiacPowerDistribution) {
-      if (Math.abs(bin.hz - peakFreq) <= 0.15) {
-        peakBandPower += bin.power;
+      const isFund = Math.abs(bin.hz - peakFreq) <= 0.15;
+      const isHarm = hasHarmonic && Math.abs(bin.hz - 2 * peakFreq) <= 0.15;
+
+      if (isFund || isHarm) {
+        signalBandPower += bin.power;
+        signalBinsCount++;
+      } else {
+        noiseBandPower += bin.power;
+        noiseBinsCount++;
       }
     }
-    const noisePower = Math.max(0.0001, totalCardiacPower - peakBandPower);
-    const snrLinear = peakBandPower / noisePower;
-    const snrDb = Math.round(10 * Math.log10(Math.max(0.1, snrLinear)) * 10) / 10;
 
-    // Reject if SNR < 1.0 dB (too noisy for defensible pulse extraction)
-    if (snrDb < 1.0) {
-      return {
-        status: 'UNUSABLE_SIGNAL',
-        reason: `Insufficient signal-to-noise ratio (${snrDb} dB < 1.0 dB threshold). Try holding still and facing steady light.`,
-        durationSeconds,
-        bufferProgressPct: 100,
-        pulseBpm: null,
-        pulseSnrDb: snrDb,
-        signalQualityScore: Math.max(15, Math.round(30 + snrDb * 10)),
-        hrvRmssdMs: null,
-        hrvStatus: 'INSUFFICIENT_DURATION',
-        hrvReason: 'Low signal-to-noise ratio prevents cardiac peak isolation.',
-        ppgWaveform: this.ppgSignalBuffer.slice(-80),
-        spectralPeakHz: peakFreq,
-        cardiacPowerDistribution,
-        lightingQuality,
-        motionStatus,
-      };
-    }
+    const signalDensity = signalBinsCount > 0 ? signalBandPower / signalBinsCount : 0;
+    const noiseDensity = noiseBinsCount > 0 ? noiseBandPower / noiseBinsCount : 0.0001;
+    const snrLinear = Math.max(0.01, signalDensity / Math.max(0.00001, noiseDensity));
+    const snrDb = Math.round(10 * Math.log10(snrLinear) * 10) / 10;
 
+    // Minimum acceptable spectral density threshold: 0.8 dB (allows robust capture under indoor webcam lighting)
+    const minSnrThresholdDb = 0.8;
     const calculatedBpm = Math.round(peakFreq * 60);
-    this.lastPulseEstimate = calculatedBpm;
-    this.pulseEstimatesHistory.push(calculatedBpm);
-    if (this.pulseEstimatesHistory.length > 30) {
-      this.pulseEstimatesHistory.shift();
-    }
 
-    const signalQualityScore = Math.min(98, Math.max(40, Math.round(50 + snrDb * 8)));
+    let finalBpm: number | null = null;
+    let signalQualityScore = 20;
+
+    if (snrDb >= minSnrThresholdDb) {
+      // Valid cardiac signal detected
+      this.recentValidEstimates.push(calculatedBpm);
+      if (this.recentValidEstimates.length > 8) {
+        this.recentValidEstimates.shift();
+      }
+
+      // Median filtering over recent estimates to reject transient artifacts
+      const sorted = [...this.recentValidEstimates].sort((a, b) => a - b);
+      const medianBpm = sorted[Math.floor(sorted.length / 2)];
+
+      // Exponential moving average blend for smooth physiological transitions
+      finalBpm = this.lastValidBpm !== null
+        ? Math.round(this.lastValidBpm * 0.35 + medianBpm * 0.65)
+        : medianBpm;
+
+      this.lastValidBpm = finalBpm;
+      this.lastValidTimestamp = now;
+      this.lastPulseEstimate = finalBpm;
+      this.pulseEstimatesHistory.push(finalBpm);
+      if (this.pulseEstimatesHistory.length > 30) {
+        this.pulseEstimatesHistory.shift();
+      }
+
+      // Scaled Signal Quality Index (SQI)
+      signalQualityScore = Math.min(98, Math.max(50, Math.round(52 + (snrDb - minSnrThresholdDb) * 4.5)));
+    } else {
+      // Check 3-second grace period hysteresis (for transient blink, glance, or swallowing motion)
+      const elapsedSinceValid = now - this.lastValidTimestamp;
+      if (this.lastValidBpm !== null && elapsedSinceValid <= 3000) {
+        finalBpm = this.lastValidBpm;
+        signalQualityScore = Math.max(35, Math.round(45 + snrDb * 2));
+      } else {
+        // Exceeded grace period or no prior estimate: mark signal unusable
+        this.lastValidBpm = null;
+        this.recentValidEstimates = [];
+
+        return {
+          status: 'UNUSABLE_SIGNAL',
+          reason: `Insufficient signal-to-noise ratio (${snrDb} dB density < ${minSnrThresholdDb} dB threshold). Hold still and face steady light.`,
+          durationSeconds,
+          bufferProgressPct: 100,
+          pulseBpm: null,
+          pulseSnrDb: snrDb,
+          signalQualityScore: Math.max(15, Math.round(25 + snrDb * 4)),
+          hrvRmssdMs: null,
+          hrvStatus: 'INSUFFICIENT_DURATION',
+          hrvReason: 'Low signal-to-noise ratio prevents cardiac peak isolation.',
+          ppgWaveform: this.ppgSignalBuffer.slice(-80),
+          spectralPeakHz: Math.round(peakFreq * 100) / 100,
+          cardiacPowerDistribution,
+          lightingQuality,
+          motionStatus,
+        };
+      }
+    }
 
     // 7. Defensible Heart Rate Variability (HRV / PRV) Analysis
     let hrvRmssdMs: number | null = null;
@@ -423,7 +503,7 @@ export class RppgProcessor {
       status: 'ESTIMATED',
       durationSeconds,
       bufferProgressPct: 100,
-      pulseBpm: calculatedBpm,
+      pulseBpm: finalBpm,
       pulseSnrDb: snrDb,
       signalQualityScore,
       hrvRmssdMs,
