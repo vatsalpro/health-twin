@@ -57,6 +57,13 @@ PregTwin was not conceived as a cold academic exercise or an automated diagnosti
 
 ## ✨ System Architecture & Key Capabilities
 
+<p align="center">
+  <img src="PregTwin_Architecture.png" alt="PregTwin Platform End-to-End System Architecture" width="100%" style="border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 8px 30px rgba(0,0,0,0.08);" />
+</p>
+<p align="center">
+  <em>Figure 1: Comprehensive architectural schematic of PregTwin — illustrating multi-source sensory ingestion, private on-device entity extraction via Ollama (llama3.2:3b), conversational patient engagement via Requesty (Google Gemma 4), longitudinal hemodynamic digital twin state engine, calibrated 14-day preeclampsia risk forecasting, and closed-loop clinical coordination.</em>
+</p>
+
 ```mermaid
 flowchart TD
     subgraph INGESTION ["📥 Multi-Source Clinical & Sensory Telemetry"]
@@ -171,11 +178,44 @@ Expectant mothers under acute psychosocial stress experience sympathetic nervous
 - **Minimum Gestational Age Guard:** Strict $\ge 20.0$ weeks threshold enforced per American College of Obstetricians and Gynecologists (ACOG) and International Society for the Study of Hypertension in Pregnancy (ISSHP) criteria. Early pregnancies automatically display an `INSUFFICIENT_DATA` safety guard.
 - **Zero Temporal Data Leakage:** All predictive features are temporally isolated strictly at or before $t_{\text{prediction}}$. No future observation can ever contaminate baseline inference.
 
-### 6. 🦩 Dr. Crane 2D Doctor Mascot & Isolated Requesty AI Integration
-A friendly, professional 2D cartoon crane dressed as an obstetrician doctor (with small white coat, stethoscope, and medical bag):
-- **Exclusively Patient-Facing:** Guides expectant mothers through medication adherence, lab results, and care trajectories without cluttering clinical workflows.
-- **Requesty API Integration:** Uses Requesty router (`https://router.requesty.ai/v1`) exclusively for conversational chat, with complete architectural isolation from Ollama.
-- **Strict Clinical Safety:** Explains clinician-prescribed orders exactly as recorded; refuses autonomous prescribing, dose alterations, or dose doubling for missed doses; deflects prompt injections and non-medical queries.
+### 6. 🦩 Dr. Crane AI Doctor: Conversational Patient Support, Dose Explanation & Atomic Booking
+
+PregTwin features **Dr. Crane**, an empathetic 2D cartoon crane mascot dressed in a clinician white coat and stethoscope. Dr. Crane provides round-the-clock conversational support for expectant mothers (`/ai-assistant`), bridging the gap between outpatient visits with medical grounding and warmth:
+
+```
+    (\__/)        "Hello Maya! I'm Dr. Crane. How are you and your
+    (•ㅅ•)  🩺    baby feeling today? I can explain your prescribed doses,
+    / >🧳         help you book a visit with Dr. Vance, or check on symptoms."
+```
+
+#### A. Medication & Dosage Guidance (Active Clinical Prescription Sync)
+- **Live Prescription Grounding:** Dr. Crane dynamically accesses the authenticated patient's active prescriptions directly from the database (e.g., *Labetalol 100 mg Oral BID, Low-Dose Aspirin 81 mg Daily, Nifedipine XL 30 mg*).
+- **Exact Dose & Schedule Explanation:** Explains precisely when, how, and why each medication is taken (e.g., *"Take your Labetalol 100 mg with breakfast and dinner. Taking it with meals minimizes lightheadedness while keeping your blood pressure in the target safe zone"*).
+- **Clinical Rationale & Maternal Mechanism:** Translates pharmacological mechanisms into clear, reassuring language (e.g., explaining how low-dose aspirin inhibits platelet thromboxane $A_2$ to prevent micro-thrombi in maternal spiral arteries and support healthy placental perfusion).
+- **Rigorous Missed Dose Protocol:** Strictly complies with obstetric safety standards — **never instructs a patient to double up on a missed dose**. If a dose is missed, Dr. Crane provides clear, safe guidance based on elapsed time and recommends contacting Dr. Vance's triage nurse for severe delays.
+- **Benign vs. Alarm Side Effects:** Clearly differentiates expected minor side effects (e.g., mild transient scalp tingling from labetalol) from severe adverse reactions (e.g., wheezing, acute dizziness), providing clear guidance on when to call the clinic.
+
+#### B. Direct Conversational Appointment Booking & Rescheduling
+- **Natural Language Consultation Scheduling:** Expectant mothers can book prenatal appointments conversationally without navigating complex calendars (e.g., *"Book an appointment with Dr. Vance tomorrow at 10 AM"*, *"I need to see Dr. Vance next Tuesday morning for a routine checkup"*).
+- **Multi-Format AM/PM Parser:** Correctly parses 12-hour AM/PM formats, dotted `"a.m."/"p.m."`, expressions like `"noon"`, `"3 in the afternoon"`, and relative dates (`"tomorrow"`, `"next Monday"`).
+- **Real-Time Doctor Availability Check:** Interrogates Dr. Elena Vance's live weekly working hours (`DoctorScheduleDay`), validates slot availability, and checks existing bookings to prevent double-booking.
+- **Atomic Database Reservation:** Directly executes the booking transaction in the database, generates standardized `formatted_time` (`"10:00 AM"`) and `formatted_date`, assigns consultation types (`ROUTINE_PRENATAL`, `URGENT_REVIEW`, or `TELEHEALTH`), and immediately syncs the booking with the patient's **Appointments** tab (`/appointments`).
+- **Conflict Handling & Slot Recommendations:** If a requested slot is occupied or falls outside office hours, Dr. Crane explains the conflict warmly and suggests the nearest open consultation openings.
+
+#### C. Deterministic Pre-LLM Emergency Warning Sign Triage
+- **Zero-Latency Safety Filter:** Before any query reaches the language model, a deterministic rule engine inspects for severe preeclampsia red flags:
+  - Systolic BP $\ge 160$ mmHg or Diastolic BP $\ge 110$ mmHg
+  - Severe persistent frontal headache unresponsive to acetaminophen
+  - Visual disturbances (scotomata, blurred vision, flashing lights)
+  - Right upper quadrant (RUQ) or epigastric pain
+  - Shortness of breath, chest tightness, or acute dyspnea
+  - Sudden severe facial/hand edema or vaginal bleeding
+- **Immediate Escalation Protocol:** Bypasses conversational pleasantries, triggers a prominent red emergency triage card advising the mother to seek immediate emergency medical care (call 911 / head to Labor & Delivery Triage), and simultaneously dispatches high-priority clinical notifications to Dr. Vance's team.
+
+#### D. Dual AI Architecture & Medical Privacy Isolation
+- **Empathy Gateway via Requesty API:** Powered by Google Gemma 4 (`google/gemma-4-31b-it`) routed through Requesty (`router.requesty.ai/v1`) with zero API costs, delivering rapid, warm, and structured clinical dialogue.
+- **Zero Data Contamination:** Dr. Crane runs in complete architectural isolation from the private on-device Ollama instance (`llama3.2:3b`), ensuring conversational queries never touch or compromise confidential PDF medical records.
+- **Clinician Dialogue Audit & Oversight:** Attending physicians can inspect full conversational transcripts, audit safety trigger logs, and review patient inquiries directly within the **Clinician Audit & Dialogue Inspector** in `AIAssistantView`.
 
 ### 7. 💊 Clinician-Controlled Medication Management & Dose Notifications
 - **Explicit Patient Selector:** Doctors prescribe medications with explicit patient matching, specifying dose, route, frequency, start/end dates, instructions, and precautions.
