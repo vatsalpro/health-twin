@@ -11,18 +11,20 @@
 [![Pytest](https://img.shields.io/badge/Tests-72%2F72%20Passing-success.svg?style=flat-square&logo=pytest&logoColor=white)](https://pytest.org)
 [![Vitest](https://img.shields.io/badge/Vitest-25%2F25%20Passing-brightgreen.svg?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev)
 [![YouTube Demo](https://img.shields.io/badge/YouTube-Video%20Demo-red.svg?style=flat-square&logo=youtube&logoColor=white)](https://youtu.be/GgM0Zp1dtxI)
+[![Slide Deck PPTX](https://img.shields.io/badge/Presentation-Deep--Dive%20PPTX-orange.svg?style=flat-square&logo=microsoftpowerpoint&logoColor=white)](PregTwin_Health-Twin_Deep_Dive.pptx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 ---
 
 ## 👥 Team & Submission Details
 
-| Team Name | Team Member | No. of Team Members | College / Institution | Department | Project Video Demonstration |
+| Team Name | Team Member | No. of Team Members | College / Institution | Department | Presentation & Video Demonstration |
 | :--- | :--- | :---: | :--- | :--- | :--- |
-| **`kvatsal03`** | **Vatsal Kumar** | **1** | **Ramaiah Institute of Technology (MSRIT)**<br>Bengaluru, Karnataka, India | **Information Science and Engineering (ISE)** | [▶️ **Watch on YouTube**](https://youtu.be/GgM0Zp1dtxI) |
+| **`kvatsal03`** | **Vatsal Kumar** | **1** | **Ramaiah Institute of Technology (MSRIT)**<br>Bengaluru, Karnataka, India | **Information Science and Engineering (ISE)** | [▶️ **Watch Video on YouTube**](https://youtu.be/GgM0Zp1dtxI)<br>[📊 **Download Deep-Dive PPTX**](PregTwin_Health-Twin_Deep_Dive.pptx) ([PDF](PregTwin_Health-Twin_Deep_Dive.pdf)) |
 
 > 📹 **Video Demonstration URL:** [https://youtu.be/GgM0Zp1dtxI](https://youtu.be/GgM0Zp1dtxI)  
-> *Comprehensive demonstration covering 3D Living Maternal Digital Twin, Dr. Crane AI Doctor workflows, Contactless rPPG & Facial Stress Sensing, Clinical OCR extraction, and Counterfactual Simulation Lab.*
+> 📊 **Project Deep-Dive Slide Deck:** [PregTwin_Health-Twin_Deep_Dive.pptx](PregTwin_Health-Twin_Deep_Dive.pptx) &bull; [PDF Version](PregTwin_Health-Twin_Deep_Dive.pdf)  
+> *Comprehensive presentation & demonstration covering 3D Living Maternal Digital Twin, Dr. Crane AI Doctor workflows, Contactless rPPG & Facial Stress Sensing, Clinical OCR extraction, and Counterfactual Simulation Lab.*
 
 ---
 
@@ -425,6 +427,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 - **College / Institution**: Ramaiah Institute of Technology (MSRIT), Bengaluru, Karnataka, India
 - **Department**: Information Science and Engineering (ISE)
 - **Project Demonstration Video**: [https://youtu.be/GgM0Zp1dtxI](https://youtu.be/GgM0Zp1dtxI)
+- **Project Slide Deck (PPTX)**: [PregTwin_Health-Twin_Deep_Dive.pptx](PregTwin_Health-Twin_Deep_Dive.pptx) ([PDF Version](PregTwin_Health-Twin_Deep_Dive.pdf))
 
 ### Heartfelt Gratitude
 - Dedicated to the midwives, obstetricians, maternal-fetal medicine specialists, and nurses who work tirelessly to protect mothers and babies.
